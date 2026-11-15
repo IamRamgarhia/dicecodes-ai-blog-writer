@@ -15,10 +15,16 @@ defined( 'ABSPATH' ) || exit;
  * a stock library gives you something real that thousands of other sites also
  * used, and a model gives you something nobody has seen and nothing verifies.
  *
+ * There is one choice here, and it is "the same AI that writes the post". That
+ * is deliberate: it means a reader who has already pasted one key is finished,
+ * with no second provider to choose, no second account to open and no second
+ * bill. Three companies among the writing providers also draw pictures --
+ * OpenAI, Google and xAI -- and for those the writing key is the image key.
+ *
  * Model names are typed rather than picked from a list. Providers retire them
  * on their own schedule, and this plugin has already shipped one dead model id
  * in a hint; a list baked in here would be wrong within months and wrong
- * silently. The settings screen links to each provider's live catalogue.
+ * silently. The settings screen links to the provider's live catalogue.
  */
 class Blogcraft_Image_Models {
 
@@ -29,11 +35,37 @@ class Blogcraft_Image_Models {
 	 */
 	public static function providers() {
 		return array(
-			'fal'    => __( 'fal.ai — hundreds of models, paid, per image', 'dicecodes-ai-blog-writer' ),
-			'openai' => __( 'OpenAI — paid, per image; uses your OpenAI writing key if you have one', 'dicecodes-ai-blog-writer' ),
-			'gemini' => __( 'Google Gemini — paid, per image; uses your Gemini writing key if you have one', 'dicecodes-ai-blog-writer' ),
-			'xai'    => __( 'xAI Grok — paid, per image; uses your Grok writing key if you have one', 'dicecodes-ai-blog-writer' ),
+			'same' => __( 'The same AI that writes the post — paid, per image, on the key you already pasted', 'dicecodes-ai-blog-writer' ),
 		);
+	}
+
+	/**
+	 * Companies among the writing providers that also draw pictures.
+	 *
+	 * @return array
+	 */
+	public static function can_draw() {
+		return array( 'openai', 'gemini', 'xai' );
+	}
+
+	/**
+	 * Which service will actually be asked for a picture.
+	 *
+	 * Empty when pictures are not set to come from the writing AI, or when the
+	 * writing AI is one that cannot draw -- Anthropic, Groq, a local model.
+	 * Everything else here treats empty as "do not try", which hands the post
+	 * to the free fallback rather than to an error.
+	 *
+	 * @return string Service id, or '' when there is none.
+	 */
+	public static function service() {
+		if ( 'same' !== (string) Blogcraft_Settings::get( 'image_provider' ) ) {
+			return '';
+		}
+
+		$writer = (string) Blogcraft_Settings::get( 'provider_type' );
+
+		return in_array( $writer, self::can_draw(), true ) ? $writer : '';
 	}
 
 	/**
@@ -42,9 +74,9 @@ class Blogcraft_Image_Models {
 	 * @param string $provider Provider id.
 	 * @return array Keys: label, key_url, models_url.
 	 */
-	public static function help( $provider ) {
-		$provider = (string) $provider;
-		$spec     = Blogcraft_Endpoints::image( '' === $provider ? 'fal' : $provider );
+	public static function help( $provider = '' ) {
+		$provider = '' === (string) $provider ? self::service() : (string) $provider;
+		$spec     = Blogcraft_Endpoints::image( $provider );
 
 		return array(
 			'label'      => (string) $spec['help'],
@@ -59,111 +91,40 @@ class Blogcraft_Image_Models {
 	 * @return bool
 	 */
 	public static function is_configured() {
-		$provider = (string) Blogcraft_Settings::get( 'image_provider' );
-
-		if ( 'fal' === $provider ) {
-			return '' !== trim( (string) Blogcraft_Settings::get( 'fal_api_key' ) )
-				&& '' !== trim( (string) Blogcraft_Settings::get( 'fal_model' ) );
-		}
-
-		if ( in_array( $provider, array( 'gemini', 'xai' ), true ) ) {
-			return '' !== self::key_for( $provider )
-				&& '' !== trim( (string) Blogcraft_Settings::get( self::settings_for( $provider )['model'] ) );
-		}
-
-		if ( 'openai' === $provider ) {
-			// Asked the same way generate() asks it. These were two separate
-			// pieces of logic and they disagreed: this said "configured"
-			// whenever any provider key was stored, so someone writing with
-			// Gemini and generating with OpenAI was told their setup was fine
-			// while every picture silently fell back to a free service. It also
-			// ignored the model id, which generate() requires.
-			return '' !== self::openai_key()
-				&& '' !== trim( (string) Blogcraft_Settings::get( 'openai_image_model' ) );
-		}
-
-		return false;
+		// Asked exactly the way generate() asks it. These were once two
+		// separate pieces of logic and they disagreed, so the screen said the
+		// setup was fine while every picture silently fell back to a free
+		// service.
+		return '' !== self::service() && '' !== self::key() && '' !== self::model();
 	}
 
 	/**
-	 * The OpenAI key to use for pictures, if there is one.
+	 * The model id to draw with.
 	 *
-	 * Falls back to the writing key, but only when the writing provider really
-	 * is OpenAI. A key issued by Groq or Anthropic will not make an image, and
-	 * treating one as though it might is how a setup screen comes to lie.
+	 * @return string
+	 */
+	public static function model() {
+		return trim( (string) Blogcraft_Settings::get( 'image_model' ) );
+	}
+
+	/**
+	 * The key to draw with.
+	 *
+	 * The writing key, unless a separate image key was stored -- which is the
+	 * uncommon case of wanting the pictures billed to a different account at
+	 * the same company. A key from one company will not work at another, so
+	 * there is nothing to fall back to beyond this.
 	 *
 	 * @return string Empty when no usable key is stored.
 	 */
-	public static function openai_key() {
-		return self::key_for( 'openai' );
-	}
+	public static function key() {
+		$own = trim( (string) Blogcraft_Settings::get( 'image_api_key' ) );
 
-	/**
-	 * The key to use for pictures from one service.
-	 *
-	 * Falls back to the writing key, but only when the writing provider is the
-	 * same company. A Gemini key will not make an OpenAI image, and treating one
-	 * as though it might is how a setup screen comes to lie.
-	 *
-	 * @param string $service Image service id.
-	 * @return string Empty when no usable key is stored.
-	 */
-	public static function key_for( $service ) {
-		$settings = self::settings_for( (string) $service );
-
-		if ( '' !== $settings['key'] ) {
-			$own = trim( (string) Blogcraft_Settings::get( $settings['key'] ) );
-
-			if ( '' !== $own ) {
-				return $own;
-			}
+		if ( '' !== $own ) {
+			return $own;
 		}
 
-		if ( (string) Blogcraft_Settings::get( 'provider_type' ) === (string) $service ) {
-			return trim( (string) Blogcraft_Settings::get( 'provider_api_key' ) );
-		}
-
-		return '';
-	}
-
-	/**
-	 * Which settings hold the key and the model for one picture service.
-	 *
-	 * Written out in full rather than built from a prefix. A key assembled by
-	 * concatenation is invisible to a search of the source and to the test that
-	 * checks every setting is read by something — which is how six settings on
-	 * the provider screen went unnoticed, and how these two were caught doing
-	 * exactly the same thing.
-	 *
-	 * @param string $service Service id.
-	 * @return array Keys: key, model.
-	 */
-	public static function settings_for( $service ) {
-		$map = array(
-			'openai' => array(
-				'key'   => 'openai_image_key',
-				'model' => 'openai_image_model',
-			),
-			'gemini' => array(
-				'key'   => 'image_key_gemini',
-				'model' => 'image_model_gemini',
-			),
-			'xai'    => array(
-				'key'   => 'image_key_xai',
-				'model' => 'image_model_xai',
-			),
-			'fal'    => array(
-				'key'   => 'fal_api_key',
-				'model' => 'fal_model',
-			),
-		);
-
-		$service = (string) $service;
-
-		return isset( $map[ $service ] ) ? $map[ $service ] : array(
-			'key'   => '',
-			'model' => '',
-		);
+		return '' === self::service() ? '' : trim( (string) Blogcraft_Settings::get( 'provider_api_key' ) );
 	}
 
 	/**
@@ -191,20 +152,15 @@ class Blogcraft_Image_Models {
 	 * @return array Keys: url, bytes, mime. All empty when nothing was made.
 	 */
 	public static function generate( $prompt, $blueprint ) {
-		$provider = (string) Blogcraft_Settings::get( 'image_provider' );
-
 		// These all bill per picture, so the cap is checked before the call
 		// rather than after it. Returning nothing hands the post back to the
-		// free providers, which is the right failure: an image, just not a
+		// free provider, which is the right failure: an image, just not a
 		// paid one.
 		if ( Blogcraft_Cost::over_image_cap() ) {
 			return self::nothing();
 		}
 
-		switch ( $provider ) {
-			case 'fal':
-				$made = self::fal( $prompt, $blueprint );
-				break;
+		switch ( self::service() ) {
 			case 'openai':
 				$made = self::openai( $prompt, $blueprint );
 				break;
@@ -283,65 +239,6 @@ class Blogcraft_Image_Models {
 	}
 
 	/**
-	 * Generate through fal.ai.
-	 *
-	 * Its models all sit behind one address with the model id as the path, so
-	 * a single adapter reaches every one of them and a new model is a settings
-	 * change rather than a plugin release.
-	 *
-	 * @param string $prompt    Image prompt.
-	 * @param array  $blueprint Blueprint.
-	 * @return string
-	 */
-	private static function fal( $prompt, $blueprint ) {
-		$key   = trim( (string) Blogcraft_Settings::get( 'fal_api_key' ) );
-		$model = trim( (string) Blogcraft_Settings::get( 'fal_model' ) );
-
-		if ( '' === $key || '' === $model ) {
-			return self::nothing();
-		}
-
-		if ( '' === (string) Blogcraft_Endpoints::image( 'fal' )['endpoint'] ) {
-			return self::nothing();
-		}
-
-		$shape = isset( $blueprint['image_shape'] ) ? (string) $blueprint['image_shape'] : '16:9';
-		$size  = Blogcraft_Art_Direction::dimensions( $shape );
-
-		$result = Blogcraft_Http::post_json(
-			Blogcraft_Endpoints::image( 'fal' )['endpoint'] . ltrim( $model, '/' ),
-			array(
-				'prompt'                => $prompt,
-				'num_images'            => 1,
-				'image_size'            => array(
-					'width'  => $size[0],
-					'height' => $size[1],
-				),
-				'enable_safety_checker' => true,
-			),
-			array( 'Authorization' => 'Key ' . $key ),
-			120
-		);
-
-		if ( '' !== $result['error'] ) {
-			return self::failed( $result['error'] );
-		}
-
-		// Most fal models answer with images[], a few with image{}.
-		foreach ( array( $result['body']['images'][0]['url'] ?? '', $result['body']['image']['url'] ?? '' ) as $candidate ) {
-			if ( ! empty( $candidate ) ) {
-				return array(
-					'url'   => esc_url_raw( (string) $candidate ),
-					'bytes' => '',
-					'mime'  => '',
-				);
-			}
-		}
-
-		return self::nothing();
-	}
-
-	/**
 	 * Say why a picture could not be made, and answer with nothing.
 	 *
 	 * @param string $reason Provider's own message, already redacted upstream.
@@ -360,7 +257,7 @@ class Blogcraft_Image_Models {
 	/**
 	 * OpenAI images.
 	 *
-	 * Falls back to the writing key, because someone who has already pasted an
+	 * Draws on the writing key, because someone who has already pasted an
 	 * OpenAI key should not have to paste it twice to get pictures.
 	 *
 	 * @param string $prompt    Image prompt.
@@ -368,15 +265,10 @@ class Blogcraft_Image_Models {
 	 * @return string
 	 */
 	private static function openai( $prompt, $blueprint ) {
-		$key = self::openai_key();
+		$key   = self::key();
+		$model = self::model();
 
-		if ( '' === $key ) {
-			return self::nothing();
-		}
-
-		$model = trim( (string) Blogcraft_Settings::get( 'openai_image_model' ) );
-
-		if ( '' === $model ) {
+		if ( '' === $key || '' === $model ) {
 			return self::nothing();
 		}
 
@@ -420,8 +312,8 @@ class Blogcraft_Image_Models {
 	private static function gemini( $prompt, $blueprint ) {
 		unset( $blueprint );
 
-		$key   = self::key_for( 'gemini' );
-		$model = trim( (string) Blogcraft_Settings::get( self::settings_for( 'gemini' )['model'] ) );
+		$key   = self::key();
+		$model = self::model();
 		$base  = (string) Blogcraft_Endpoints::image( 'gemini' )['endpoint'];
 
 		if ( '' === $key || '' === $model || '' === $base ) {
@@ -487,8 +379,8 @@ class Blogcraft_Image_Models {
 	private static function xai( $prompt, $blueprint ) {
 		unset( $blueprint );
 
-		$key      = self::key_for( 'xai' );
-		$model    = trim( (string) Blogcraft_Settings::get( self::settings_for( 'xai' )['model'] ) );
+		$key      = self::key();
+		$model    = self::model();
 		$endpoint = (string) Blogcraft_Endpoints::image( 'xai' )['endpoint'];
 
 		if ( '' === $key || '' === $model || '' === $endpoint ) {

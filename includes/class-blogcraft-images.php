@@ -72,97 +72,11 @@ class Blogcraft_Images {
 	 * @return array
 	 */
 	public static function providers() {
-		// The generators come from Blogcraft_Image_Models rather than being
+		// The generator comes from Blogcraft_Image_Models rather than being
 		// listed again here. Two lists meant adding a service in one place and
 		// having resolve() never route to it.
 		return array( 'pollinations' => __( 'Pollinations — free, generated, no key needed', 'dicecodes-ai-blog-writer' ) )
-			+ Blogcraft_Image_Models::providers()
-			+ array(
-				'pexels'  => __( 'Pexels — free, real photos, free key', 'dicecodes-ai-blog-writer' ),
-				'pixabay' => __( 'Pixabay — free, real photos, free key', 'dicecodes-ai-blog-writer' ),
-			);
-	}
-
-	/**
-	 * Find a Pexels photo for a query.
-	 *
-	 * @param string $query Search terms.
-	 * @return string Image URL, or '' when unavailable.
-	 */
-	private static function pexels_url( $query ) {
-		$key = (string) Blogcraft_Settings::get( 'pexels_api_key' );
-
-		if ( '' === $key ) {
-			return '';
-		}
-
-		$result = Blogcraft_Http::get_json(
-			add_query_arg(
-				array(
-					'query'       => rawurlencode( $query ),
-					'per_page'    => 1,
-					'orientation' => 'landscape',
-				),
-				'https://api.pexels.com/v1/search'
-			),
-			array( 'Authorization' => $key ),
-			20
-		);
-
-		if ( '' !== $result['error'] || empty( $result['body']['photos'][0]['src']['large'] ) ) {
-			return '';
-		}
-
-		return esc_url_raw( (string) $result['body']['photos'][0]['src']['large'] );
-	}
-
-	/**
-	 * Find a Pixabay photo for a query.
-	 *
-	 * @param string $query Search terms.
-	 * @return string Image URL, or '' when unavailable.
-	 */
-	private static function pixabay_url( $query ) {
-		$key = (string) Blogcraft_Settings::get( 'pixabay_api_key' );
-
-		if ( '' === $key ) {
-			return '';
-		}
-
-		$result = Blogcraft_Http::get_json(
-			add_query_arg(
-				array(
-					'key'         => $key,
-					'q'           => rawurlencode( $query ),
-					'per_page'    => 3,
-					'orientation' => 'horizontal',
-					'image_type'  => 'photo',
-				),
-				'https://pixabay.com/api/'
-			),
-			array(),
-			20
-		);
-
-		if ( '' !== $result['error'] || empty( $result['body']['hits'][0]['largeImageURL'] ) ) {
-			return '';
-		}
-
-		return esc_url_raw( (string) $result['body']['hits'][0]['largeImageURL'] );
-	}
-
-	/**
-	 * Resolve an image URL, trying the chosen provider then falling back.
-	 *
-	 * Pollinations is always the last resort because it needs no key, so the
-	 * chain can never run out of options and leave a post with no image.
-	 *
-	 * @param string $prompt Description of the wanted image, for the generators.
-	 * @param string $query  A few keywords, for the libraries that search.
-	 * @return string
-	 */
-	public static function resolve_url( $prompt, $query = '' ) {
-		return self::resolve( $prompt, $query )['url'];
+			+ Blogcraft_Image_Models::providers();
 	}
 
 	/**
@@ -172,47 +86,27 @@ class Blogcraft_Images {
 	 * return type has to carry both. Everything downstream asks this for a temp
 	 * file and never has to know which arrived.
 	 *
-	 * @param string $prompt Description of the wanted image, for the generators.
-	 * @param string $query  A few keywords, for the libraries that search.
+	 * Two steps, not four. Both stock-photo libraries wanted an account and a
+	 * key of their own for pictures that thousands of other sites had already
+	 * used, which is two more setup screens than the result was worth; a
+	 * picture drawn to the post's own description is the better one anyway.
+	 *
+	 * @param string $prompt Description of the wanted image.
+	 * @param string $query  Unused; kept so callers need not change.
 	 * @return array Keys: url, bytes, mime.
 	 */
 	public static function resolve( $prompt, $query = '' ) {
-		// A generator takes a prompt and a library takes a query; they are not
-		// the same string and treating them as one is a silent miss.
-		$query     = ( '' === trim( (string) $query ) ) ? (string) $prompt : (string) $query;
-		$preferred = (string) Blogcraft_Settings::get( 'image_provider' );
-		$generated = array_keys( Blogcraft_Image_Models::providers() );
+		unset( $query );
 
-		// A paid generator is only ever used when it is the one chosen. Falling
-		// back *to* one would spend money the user did not ask to spend.
-		$order = array( $preferred, 'pexels', 'pixabay', 'pollinations' );
-		$seen  = array();
+		// The paid generator runs only when it is the one chosen, and only
+		// when it is actually set up. Anything else -- no key, no model id, a
+		// writing provider that cannot draw, the monthly cap reached -- falls
+		// through to the free one, so a post is never left without a picture.
+		if ( '' !== Blogcraft_Image_Models::service() ) {
+			$made = Blogcraft_Image_Models::generate( $prompt, Blogcraft_Blueprint::get() );
 
-		foreach ( $order as $provider ) {
-			if ( '' === $provider || isset( $seen[ $provider ] ) ) {
-				continue;
-			}
-
-			$seen[ $provider ] = true;
-
-			if ( 'pexels' === $provider ) {
-				$url = self::pexels_url( $query );
-			} elseif ( 'pixabay' === $provider ) {
-				$url = self::pixabay_url( $query );
-			} elseif ( in_array( $provider, $generated, true ) ) {
-				$made = Blogcraft_Image_Models::generate( $prompt, Blogcraft_Blueprint::get() );
-
-				if ( '' !== $made['url'] || '' !== $made['bytes'] ) {
-					return $made;
-				}
-
-				continue;
-			} else {
-				$url = self::source_url( $prompt );
-			}
-
-			if ( '' !== $url ) {
-				return self::at( $url );
+			if ( '' !== $made['url'] || '' !== $made['bytes'] ) {
+				return $made;
 			}
 		}
 
@@ -520,7 +414,9 @@ class Blogcraft_Images {
 	 * @param int    $post_id Post to attach to.
 	 * @param string $title   Post title, used for the prompt and alt text.
 	 * @param string $topic   Original topic, for extra prompt context.
-	 * @return int Attachment id, or 0 when unavailable.
+	 * @return int Id of the attachment this call made, or 0 when it made none
+	 *             -- including when the post already had a featured image.
+	 *             Not "is there one": ask has_post_thumbnail() for that.
 	 */
 	public static function attach_featured( $post_id, $title, $topic = '' ) {
 		if ( ! Blogcraft_Settings::get( 'images_enabled' ) ) {
@@ -531,8 +427,20 @@ class Blogcraft_Images {
 		// beyond tidiness: publishing can be re-run after an interrupted
 		// attempt, and every generating picture service bills per image, so
 		// without this a crash part-way through would be charged for twice.
+		//
+		// Zero, not the id of the picture already there.
+		//
+		// Returning that id meant this function answered "there is a featured
+		// image" while every caller was asking "did you attach one", and both
+		// callers believed the answer. One of them added the id to a running
+		// total and told a connected client "Added 9 pictures" about a single
+		// image that happened to be attachment 9; the other reported "Added: a
+		// featured image" every time a post was published, whether or not it
+		// had just been given one. Callers that want to know whether a post
+		// has a picture can ask has_post_thumbnail() themselves, which is the
+		// question they would be asking.
 		if ( has_post_thumbnail( (int) $post_id ) ) {
-			return (int) get_post_thumbnail_id( (int) $post_id );
+			return 0;
 		}
 
 		require_once ABSPATH . 'wp-admin/includes/file.php';

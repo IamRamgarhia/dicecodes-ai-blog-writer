@@ -412,16 +412,18 @@ class Blogcraft_Overview {
 			);
 		}
 
-		// A half-configured picture service is silent: the chain falls through to
-		// a free one and the post still gets an image, so nothing looks wrong and
+		// A half-configured picture service is silent: it falls through to the
+		// free one and the post still gets an image, so nothing looks wrong and
 		// the model that was chosen is never used.
-		$image_provider = (string) Blogcraft_Settings::get( 'image_provider' );
-
-		if ( array_key_exists( $image_provider, Blogcraft_Image_Models::providers() ) && ! Blogcraft_Image_Models::is_configured() ) {
+		//
+		// Only worth saying when the writing AI can draw at all. When it cannot,
+		// nothing is missing and the free service is the right answer -- the
+		// settings screen says so there, which is where it belongs.
+		if ( '' !== Blogcraft_Image_Models::service() && ! Blogcraft_Image_Models::is_configured() ) {
 			$items[] = array(
-				'text' => __( 'The picture service you chose is missing a key or a model name, so free images are being used instead.', 'dicecodes-ai-blog-writer' ),
+				'text' => __( 'Your pictures are set to come from the AI that writes them, but no image model is named, so free images are being used instead.', 'dicecodes-ai-blog-writer' ),
 				'url'  => admin_url( 'admin.php?page=blogcraft-settings#bc-card-pictures' ),
-				'link' => __( 'Finish it', 'dicecodes-ai-blog-writer' ),
+				'link' => __( 'Name one', 'dicecodes-ai-blog-writer' ),
 				'kind' => 'wait',
 			);
 		}

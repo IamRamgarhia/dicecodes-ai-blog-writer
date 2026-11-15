@@ -150,17 +150,31 @@ class Test_Blogcraft_Art_Direction extends WP_UnitTestCase {
 	}
 
 	public function test_generative_providers_are_not_used_until_configured() {
-		Blogcraft_Settings::set( 'image_provider', 'fal' );
-		Blogcraft_Settings::set( 'fal_api_key', '' );
-		Blogcraft_Settings::set( 'fal_model', '' );
+		Blogcraft_Settings::set( 'image_provider', 'same' );
+		Blogcraft_Settings::set( 'provider_type', 'openai' );
+		Blogcraft_Settings::set( 'provider_api_key', 'sk-writing' );
+		Blogcraft_Settings::set( 'image_model', '' );
 
+		$this->assertFalse( Blogcraft_Image_Models::is_configured() );
+		$this->assertSame( Blogcraft_Image_Models::nothing(), Blogcraft_Image_Models::generate( 'a kettle', array() ) );
+	}
+
+	public function test_a_writing_ai_that_cannot_draw_never_tries() {
+		// Anthropic, Groq, a local model: there is no image endpoint to call,
+		// so the post goes to the free service rather than to an error.
+		Blogcraft_Settings::set( 'image_provider', 'same' );
+		Blogcraft_Settings::set( 'provider_type', 'anthropic' );
+		Blogcraft_Settings::set( 'provider_api_key', 'sk-ant-writing' );
+		Blogcraft_Settings::set( 'image_model', 'some-model' );
+
+		$this->assertSame( '', Blogcraft_Image_Models::service() );
 		$this->assertFalse( Blogcraft_Image_Models::is_configured() );
 		$this->assertSame( Blogcraft_Image_Models::nothing(), Blogcraft_Image_Models::generate( 'a kettle', array() ) );
 	}
 
 	public function test_a_reached_image_cap_stops_paid_generation() {
 		Blogcraft_Cost::reset();
-		Blogcraft_Settings::set( 'image_provider', 'fal' );
+		Blogcraft_Settings::set( 'image_provider', 'same' );
 		Blogcraft_Settings::set( 'monthly_image_cap', 2 );
 
 		$this->assertFalse( Blogcraft_Cost::over_image_cap() );
@@ -264,54 +278,60 @@ class Test_Blogcraft_Art_Direction extends WP_UnitTestCase {
 		$this->assertSame( (int) $attachment, (int) $parsed[0]['attrs']['id'] );
 	}
 
-	public function test_one_openai_key_covers_writing_and_pictures() {
+	public function test_the_writing_key_draws_the_pictures() {
+		Blogcraft_Settings::set( 'image_provider', 'same' );
 		Blogcraft_Settings::set( 'provider_type', 'openai' );
 		Blogcraft_Settings::set( 'provider_api_key', 'sk-writing' );
-		Blogcraft_Settings::set( 'openai_image_key', '' );
+		Blogcraft_Settings::set( 'image_api_key', '' );
 
-		$this->assertSame( 'sk-writing', Blogcraft_Image_Models::openai_key() );
+		$this->assertSame( 'sk-writing', Blogcraft_Image_Models::key() );
 	}
 
-	public function test_a_key_from_another_company_is_not_borrowed_for_pictures() {
-		// A Gemini key will not make an OpenAI image, and pretending it might is
-		// how a setup screen comes to say "ready" about something that silently
-		// falls back to free pictures on every post.
-		Blogcraft_Settings::set( 'provider_type', 'gemini' );
-		Blogcraft_Settings::set( 'provider_api_key', 'gemini-key' );
-		Blogcraft_Settings::set( 'openai_image_key', '' );
+	public function test_no_key_is_borrowed_when_the_writing_ai_cannot_draw() {
+		// A Groq key will not make a picture anywhere, and pretending it might
+		// is how a setup screen comes to say "ready" about something that
+		// silently falls back to free pictures on every post.
+		Blogcraft_Settings::set( 'image_provider', 'same' );
+		Blogcraft_Settings::set( 'provider_type', 'groq' );
+		Blogcraft_Settings::set( 'provider_api_key', 'gsk-writing' );
+		Blogcraft_Settings::set( 'image_api_key', '' );
 
-		$this->assertSame( '', Blogcraft_Image_Models::openai_key() );
+		$this->assertSame( '', Blogcraft_Image_Models::key() );
+		$this->assertFalse( Blogcraft_Image_Models::is_configured() );
 	}
 
 	public function test_a_separate_image_key_wins_over_the_writing_one() {
+		Blogcraft_Settings::set( 'image_provider', 'same' );
 		Blogcraft_Settings::set( 'provider_type', 'openai' );
 		Blogcraft_Settings::set( 'provider_api_key', 'sk-writing' );
-		Blogcraft_Settings::set( 'openai_image_key', 'sk-pictures' );
+		Blogcraft_Settings::set( 'image_api_key', 'sk-pictures' );
 
-		$this->assertSame( 'sk-pictures', Blogcraft_Image_Models::openai_key() );
+		$this->assertSame( 'sk-pictures', Blogcraft_Image_Models::key() );
 	}
 
-	public function test_openai_pictures_are_not_ready_without_a_model() {
-		Blogcraft_Settings::set( 'image_provider', 'openai' );
+	public function test_pictures_are_not_ready_without_a_model() {
+		Blogcraft_Settings::set( 'image_provider', 'same' );
 		Blogcraft_Settings::set( 'provider_type', 'openai' );
 		Blogcraft_Settings::set( 'provider_api_key', 'sk-writing' );
-		Blogcraft_Settings::set( 'openai_image_model', '' );
+		Blogcraft_Settings::set( 'image_api_key', '' );
+		Blogcraft_Settings::set( 'image_model', '' );
 
 		// generate() refuses without a model, so is_configured() must agree.
 		$this->assertFalse( Blogcraft_Image_Models::is_configured() );
 
-		Blogcraft_Settings::set( 'openai_image_model', 'gpt-image-1' );
+		Blogcraft_Settings::set( 'image_model', 'an-image-model' );
 
 		$this->assertTrue( Blogcraft_Image_Models::is_configured() );
 	}
 
-	public function test_openai_pictures_are_not_ready_on_another_writing_provider() {
-		Blogcraft_Settings::set( 'image_provider', 'openai' );
-		Blogcraft_Settings::set( 'provider_type', 'groq' );
-		Blogcraft_Settings::set( 'provider_api_key', 'gsk-writing' );
-		Blogcraft_Settings::set( 'openai_image_key', '' );
-		Blogcraft_Settings::set( 'openai_image_model', 'gpt-image-1' );
+	public function test_the_free_service_is_never_asked_to_be_configured() {
+		// Choosing Pollinations is a complete setup, not a half-finished one.
+		Blogcraft_Settings::set( 'image_provider', 'pollinations' );
+		Blogcraft_Settings::set( 'provider_type', 'openai' );
+		Blogcraft_Settings::set( 'provider_api_key', 'sk-writing' );
+		Blogcraft_Settings::set( 'image_model', 'an-image-model' );
 
+		$this->assertSame( '', Blogcraft_Image_Models::service() );
 		$this->assertFalse( Blogcraft_Image_Models::is_configured() );
 	}
 
@@ -379,19 +399,12 @@ class Test_Blogcraft_Art_Direction extends WP_UnitTestCase {
 		$this->assertStringEndsWith( '.jpg', Blogcraft_Images::filename_for( 'A title', 'image/jpeg' ) );
 	}
 
-	public function test_every_picture_service_names_the_settings_it_reads() {
-		// A setting reached by building its name from a prefix is invisible to
-		// a search of the source and to the test that checks nothing is dead.
+	public function test_the_picture_settings_exist_in_the_schema() {
 		$schema = Blogcraft_Settings_Schema::all();
 
-		foreach ( array_keys( Blogcraft_Image_Models::providers() ) as $service ) {
-			$settings = Blogcraft_Image_Models::settings_for( $service );
-
-			$this->assertNotSame( '', $settings['key'], $service . ' names no key setting' );
-			$this->assertNotSame( '', $settings['model'], $service . ' names no model setting' );
-			$this->assertArrayHasKey( $settings['key'], $schema );
-			$this->assertArrayHasKey( $settings['model'], $schema );
-		}
+		$this->assertArrayHasKey( 'image_model', $schema );
+		$this->assertArrayHasKey( 'image_api_key', $schema );
+		$this->assertTrue( $schema['image_api_key']['secret'], 'an image key must be stored encrypted' );
 	}
 
 	public function test_every_generated_service_is_offered_and_routable() {
@@ -405,34 +418,26 @@ class Test_Blogcraft_Art_Direction extends WP_UnitTestCase {
 	}
 
 	public function test_a_service_with_no_key_makes_nothing() {
-		foreach ( array( 'gemini', 'xai' ) as $service ) {
-			Blogcraft_Settings::set( 'image_provider', $service );
-			Blogcraft_Settings::set( 'provider_type', 'groq' );
-			Blogcraft_Settings::set( 'image_key_' . $service, '' );
-			Blogcraft_Settings::set( 'image_model_' . $service, 'a-model' );
+		Blogcraft_Settings::set( 'image_provider', 'same' );
+		Blogcraft_Settings::set( 'image_api_key', '' );
+		Blogcraft_Settings::set( 'image_model', 'a-model' );
+
+		foreach ( Blogcraft_Image_Models::can_draw() as $service ) {
+			Blogcraft_Settings::set( 'provider_type', $service );
+			Blogcraft_Settings::set( 'provider_api_key', '' );
 
 			$this->assertFalse( Blogcraft_Image_Models::is_configured(), $service );
 			$this->assertSame( '', Blogcraft_Image_Models::generate( 'a kettle', array() )['bytes'], $service );
 		}
 	}
 
-	public function test_a_writing_key_is_shared_only_with_the_same_company() {
-		Blogcraft_Settings::set( 'provider_type', 'gemini' );
-		Blogcraft_Settings::set( 'provider_api_key', 'gemini-key' );
-		Blogcraft_Settings::set( 'image_key_gemini', '' );
-		Blogcraft_Settings::set( 'image_key_xai', '' );
-
-		$this->assertSame( 'gemini-key', Blogcraft_Image_Models::key_for( 'gemini' ) );
-		$this->assertSame( '', Blogcraft_Image_Models::key_for( 'xai' ) );
-		$this->assertSame( '', Blogcraft_Image_Models::key_for( 'openai' ) );
-	}
-
-	public function test_every_generative_provider_says_where_to_get_a_key() {
-		foreach ( array_keys( Blogcraft_Image_Models::providers() ) as $provider ) {
+	public function test_every_drawing_company_says_where_to_get_a_key() {
+		foreach ( Blogcraft_Image_Models::can_draw() as $provider ) {
 			$help = Blogcraft_Image_Models::help( $provider );
 
-			$this->assertNotSame( '', $help['key_url'] );
-			$this->assertNotSame( '', $help['models_url'] );
+			$this->assertNotSame( '', $help['key_url'], $provider );
+			$this->assertNotSame( '', $help['models_url'], $provider );
+			$this->assertNotSame( '', Blogcraft_Endpoints::image( $provider )['endpoint'], $provider );
 		}
 	}
 

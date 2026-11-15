@@ -93,7 +93,7 @@ class Blogcraft_Progress {
 	 * @return void
 	 */
 	public static function register_menu() {
-		add_submenu_page(
+		$hook = add_submenu_page(
 			'',
 			__( 'Writing a post', 'dicecodes-ai-blog-writer' ),
 			__( 'Writing a post', 'dicecodes-ai-blog-writer' ),
@@ -101,6 +101,8 @@ class Blogcraft_Progress {
 			self::PAGE_SLUG,
 			array( __CLASS__, 'render' )
 		);
+
+		Blogcraft_Admin::title_for( $hook, __( 'Writing a post', 'dicecodes-ai-blog-writer' ) );
 	}
 
 	/**
@@ -148,7 +150,12 @@ class Blogcraft_Progress {
 				// under it, and only stopped saying so after the first poll
 				// came back — if it came back at all.
 				'settled'   => self::is_settled( self::current_job_id() ),
+				// False when the job was named by an unsigned link. The screen
+				// then reads the job without starting it. See may_drive().
+				'autostart' => self::may_drive(),
 				'done'      => __( 'Finished.', 'dicecodes-ai-blog-writer' ),
+				'idle'      => __( 'Open this job from the Activity screen to continue it.', 'dicecodes-ai-blog-writer' ),
+				'stuck'     => __( 'Waiting. This post may be running in another tab, or may have stopped — the Activity screen has the details.', 'dicecodes-ai-blog-writer' ),
 				'failed'    => __( 'Something went wrong. The Activity screen has the details.', 'dicecodes-ai-blog-writer' ),
 				'total'     => count( self::steps() ),
 				/* translators: 1: step number reached. 2: steps in total. */
@@ -229,9 +236,70 @@ class Blogcraft_Progress {
 	 *
 	 * @return int
 	 */
+	/**
+	 * Nonce action for a link that selects a job to watch.
+	 */
+	const OPEN_ACTION = 'blogcraft_open_job';
+
+	/**
+	 * Link to this screen for one job, signed so the page may drive it.
+	 *
+	 * @param int $job_id Job.
+	 * @return string
+	 */
+	public static function url( $job_id ) {
+		return add_query_arg(
+			array(
+				'page'            => self::PAGE_SLUG,
+				'job'             => (int) $job_id,
+				'_blogcraft_open' => wp_create_nonce( self::OPEN_ACTION . '_' . (int) $job_id ),
+			),
+			admin_url( 'admin.php' )
+		);
+	}
+
+	/**
+	 * Was the job in the address chosen by this plugin, or by whoever wrote
+	 * the link?
+	 *
+	 * Opening the screen starts the job advancing, one stage after another,
+	 * each of which spends money at a provider and may end in a published
+	 * post. The AJAX call behind that is nonce-protected, but the nonce is
+	 * minted by the page the victim just loaded, so it protects nothing
+	 * against a link: send an administrator a crafted address and their
+	 * browser does the work.
+	 *
+	 * So the id has to be signed too. An unsigned one still opens the screen
+	 * -- reading a job is harmless, and old bookmarks keep working -- it just
+	 * does not set it running.
+	 *
+	 * @return bool
+	 */
+	private static function may_drive() {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- this IS the verification.
+		if ( ! isset( $_GET['job'] ) ) {
+			// Nothing was asked for, so the id came from newest_open_job():
+			// this plugin chose it, not a link.
+			return true;
+		}
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- verified on the next line.
+		$given = isset( $_GET['_blogcraft_open'] ) ? sanitize_text_field( wp_unslash( $_GET['_blogcraft_open'] ) ) : '';
+		$job   = isset( $_GET['job'] ) ? (int) $_GET['job'] : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- as above.
+
+		return (bool) wp_verify_nonce( $given, self::OPEN_ACTION . '_' . $job );
+	}
+
+	/**
+	 * Which job this screen is showing.
+	 *
+	 * Whether the screen may also drive it is may_drive()'s question.
+	 *
+	 * @return int Job id, or 0 when there is none.
+	 */
 	private static function current_job_id() {
-		// Read-only screen selection, not a state change: the nonce that
-		// matters guards the AJAX advance and the approve handler.
+		// Which job to *show*. Whether the page may also drive it is
+		// may_drive()'s question, not this one.
 		$asked = isset( $_GET['job'] ) ? (int) $_GET['job'] : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read only: which job to display; ownership is checked before anything is shown.
 
 		if ( $asked > 0 ) {
@@ -259,10 +327,6 @@ class Blogcraft_Progress {
 			wp_send_json_error( array( 'message' => __( 'Not allowed.', 'dicecodes-ai-blog-writer' ) ), 403 );
 		}
 
-		if ( ! current_user_can( Blogcraft_Capabilities::MANAGE ) ) {
-			wp_send_json_error( array( 'message' => __( 'Not allowed.', 'dicecodes-ai-blog-writer' ) ), 403 );
-		}
-
 		if ( ! check_ajax_referer( self::ACTION, '_blogcraft_nonce', false ) ) {
 			wp_send_json_error( array( 'message' => __( 'That page has expired. Reload it.', 'dicecodes-ai-blog-writer' ) ), 403 );
 		}
@@ -273,9 +337,58 @@ class Blogcraft_Progress {
 			wp_send_json_error( array( 'message' => __( 'No post to write.', 'dicecodes-ai-blog-writer' ) ), 400 );
 		}
 
-		Blogcraft_Worker::run_job( $job_id );
+		// Release a lock left behind by a request that died.
+		//
+		// claim_job() will only take a job whose status is 'pending'. When a
+		// stage outlives max_execution_time -- which a slow model does
+		// routinely -- the request is killed after the job has been marked
+		// 'running', and nothing sets it back. From then on every poll from
+		// this screen called run_job(), got null from claim_job(), returned
+		// false, and this handler sent back an unchanged state. The bar sat
+		// still and the page kept asking, for ever.
+		//
+		// reclaim_stale() already existed for exactly this, but only the cron
+		// scheduler and WP-CLI ever called it, on an hour's cutoff. A site with
+		// DISABLE_WP_CRON set, or simply too little traffic to fire cron, never
+		// recovered at all.
+		//
+		// The cutoff here is deliberately shorter than the scheduler's hour but
+		// longer than any single request could still be alive for, so a stage
+		// that is genuinely still working is never reclaimed out from under
+		// itself and run twice.
+		Blogcraft_Queue::reclaim_stale( self::stall_cutoff() );
 
-		wp_send_json_success( self::state( $job_id ) );
+		$ran = Blogcraft_Worker::run_job( $job_id );
+
+		$state = self::state( $job_id );
+
+		// Tell the screen the difference between "working" and "could not even
+		// start". Without this the two look identical and the second one looks
+		// like the first for ever.
+		$state['advanced'] = (bool) $ran;
+
+		wp_send_json_success( $state );
+	}
+
+	/**
+	 * How long a job may sit locked before this screen treats it as abandoned.
+	 *
+	 * Twice the host's execution limit, floored at five minutes: a request that
+	 * is still running cannot have exceeded its own limit, so doubling it
+	 * leaves room for a slow stage while still recovering in minutes rather
+	 * than the scheduler's hour. Hosts reporting no limit get a flat fifteen
+	 * minutes, since there is nothing to derive one from.
+	 *
+	 * @return int Seconds.
+	 */
+	private static function stall_cutoff() {
+		$limit = (int) ini_get( 'max_execution_time' );
+
+		if ( $limit > 0 ) {
+			return max( 300, $limit * 2 );
+		}
+
+		return 15 * MINUTE_IN_SECONDS;
 	}
 
 	/**
@@ -431,13 +544,7 @@ class Blogcraft_Progress {
 		}
 
 		wp_safe_redirect(
-			add_query_arg(
-				array(
-					'page' => self::PAGE_SLUG,
-					'job'  => $job_id,
-				),
-				admin_url( 'admin.php' )
-			)
+			self::url( (int) $job_id )
 		);
 		exit;
 	}
@@ -627,14 +734,7 @@ class Blogcraft_Progress {
 			// Nothing a rewrite owns. Spending a request here would cost real
 			// money to produce the same draft and the same score.
 			wp_safe_redirect(
-				add_query_arg(
-					array(
-						'page'    => self::PAGE_SLUG,
-						'job'     => $job_id,
-						'improve' => 'nothing',
-					),
-					admin_url( 'admin.php' )
-				)
+				add_query_arg( 'improve', 'nothing', self::url( (int) $job_id ) )
 			);
 			exit;
 		}
@@ -674,13 +774,7 @@ class Blogcraft_Progress {
 		);
 
 		wp_safe_redirect(
-			add_query_arg(
-				array(
-					'page' => self::PAGE_SLUG,
-					'job'  => $job_id,
-				),
-				admin_url( 'admin.php' )
-			)
+			self::url( (int) $job_id )
 		);
 		exit;
 	}
@@ -732,13 +826,7 @@ class Blogcraft_Progress {
 		);
 
 		wp_safe_redirect(
-			add_query_arg(
-				array(
-					'page' => self::PAGE_SLUG,
-					'job'  => $job_id,
-				),
-				admin_url( 'admin.php' )
-			)
+			self::url( (int) $job_id )
 		);
 		exit;
 	}

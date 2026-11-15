@@ -260,8 +260,8 @@ class Test_Blogcraft_Wiring extends WP_UnitTestCase {
 			}
 		}
 
-		// The nonce field is request data, not something stored on a post.
-		unset( $written['_blogcraft_nonce'] );
+		// Nonces are request data, not anything stored on a post.
+		unset( $written['_blogcraft_nonce'], $written['_blogcraft_open'] );
 
 		$missed = array();
 
@@ -342,7 +342,7 @@ class Test_Blogcraft_Wiring extends WP_UnitTestCase {
 
 		$this->assertArrayHasKey( 'openai', $text );
 		$this->assertNotSame( '', $text['openai']['base_url'] );
-		$this->assertNotSame( '', Blogcraft_Endpoints::image( 'fal' )['endpoint'] );
+		$this->assertNotSame( '', Blogcraft_Endpoints::image( 'openai' )['endpoint'] );
 	}
 
 	public function test_another_plugin_can_add_a_provider() {

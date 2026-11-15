@@ -373,7 +373,106 @@ class Blogcraft_Mcp_Auth {
 		// tool has to remember to.
 		wp_set_current_user( $user_id );
 
+		// ...and then takes away everything the tools do not need.
+		//
+		// Becoming the token's owner is what lets a draft carry a real author
+		// and what makes current_user_can( 'edit_post', $id ) mean something.
+		// But if that owner is an administrator, the whole request would
+		// otherwise carry administrator capability, and a connected AI client
+		// would hold the power to install a plugin, edit a theme file, add a
+		// user or rewrite the site's options -- none of which any tool here
+		// asks for, and all of which would make this plugin a way to
+		// administer a site from somewhere else.
+		//
+		// So the ceiling is set explicitly, for this request only, and it is
+		// the only thing standing between the connection and the rest of
+		// WordPress. A tool added later inherits the ceiling rather than the
+		// administrator.
+		self::cap_the_request( $user_id );
+
 		return true;
+	}
+
+	/**
+	 * Capabilities an MCP request may use. Everything else is denied.
+	 *
+	 * Writing and reading posts, and reading the taxonomies and media a post
+	 * needs. No settings, no users, no plugins, no themes, no files, no
+	 * exports, no other content type.
+	 *
+	 * @return array
+	 */
+	public static function allowed_caps() {
+		return array(
+			// The gate on the connection itself.
+			Blogcraft_Capabilities::MANAGE,
+
+			// Reaching wp-admin-side code paths at all.
+			'read',
+
+			// Posts: WordPress maps the post-specific checks the tools make
+			// (edit_post, publish_post, delete_post) onto these.
+			'edit_posts',
+			'edit_published_posts',
+			'edit_others_posts',
+			'publish_posts',
+			'delete_posts',
+
+			// Pictures on a draft.
+			'upload_files',
+
+			// Categories and tags on a draft.
+			'assign_terms',
+			'manage_categories',
+
+			// Unfiltered post content is deliberately absent: a draft from a
+			// connected client goes through kses like anybody else's.
+		);
+	}
+
+	/**
+	 * Hold this request to allowed_caps() for as long as it lasts.
+	 *
+	 * @param int $user_id The connected user, and the only one capped.
+	 * @return void
+	 */
+	private static function cap_the_request( $user_id ) {
+		$user_id = (int) $user_id;
+
+		add_filter(
+			'user_has_cap',
+			static function ( $caps, $required, $args, $user ) use ( $user_id ) {
+				unset( $required, $args );
+
+				// This user, and only this user.
+				//
+				// user_has_cap fires for every capability check in the
+				// request, including checks about *other* people:
+				// user_can( $somebody, ... ), and the per-post checks
+				// WordPress makes about a post's author. Capping those too
+				// made the connected client's ceiling everybody's ceiling,
+				// which the test suite caught by finding that an
+				// administrator was no longer an administrator.
+				if ( ! $user instanceof WP_User || (int) $user->ID !== $user_id ) {
+					return $caps;
+				}
+
+				$allowed = Blogcraft_Mcp_Auth::allowed_caps();
+				$capped  = array();
+
+				// Rebuilt rather than filtered, so a capability granted by
+				// another plugin's own user_has_cap filter running earlier
+				// cannot widen this either.
+				foreach ( $caps as $cap => $granted ) {
+					$capped[ $cap ] = $granted && in_array( $cap, $allowed, true );
+				}
+
+				return $capped;
+			},
+			// Late, so it is the last word on what this request may do.
+			PHP_INT_MAX,
+			4
+		);
 	}
 
 	/**

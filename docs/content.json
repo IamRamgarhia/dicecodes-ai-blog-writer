@@ -191,13 +191,13 @@
       "prose": [
         "Pictures come from a different kind of service than the writing does, so they are set up separately. Nothing here is required, and nothing runs until you switch pictures on — that switch is how you tell the plugin it may contact a picture service. Pollinations needs no key and is the one it starts on.",
         "The model that wrote the post describes the scene it should show, and the Pictures controls on the How it writes screen decide how that scene looks.",
-        "fal.ai, OpenAI, Gemini and Grok charge per picture. They are only ever used when you pick one of them, never as a fallback, so an image is never billed to you by accident. If you already write with OpenAI, Google or xAI, choosing the same one here uses the key you have already entered.",
-        "Pexels and Pixabay search real photographs rather than drawing anything. Their keys are free."
+        "OpenAI, Gemini and Grok charge per picture. They are only ever used when you pick them, never as a fallback, so an image is never billed to you by accident. If you already write with OpenAI, Google or xAI, choosing the same one here uses the key you have already entered.",
+        "If you write with something that cannot draw — Anthropic, Groq, a model on your own machine — Pollinations makes the pictures instead, free and with no key."
       ],
       "steps": [],
       "points": [
         "The model that wrote the piece describes the scene — the difference between a useful image and clip art of the headline.",
-        "Pollinations needs no key. fal.ai, OpenAI, Gemini and Grok charge per picture and run only when you pick them.",
+        "Pollinations needs no key. OpenAI, Gemini and Grok charge per picture and run only when you pick them.",
         "Writing on OpenAI and pictures on OpenAI? Leave the image key blank and one key does both.",
         "Text is kept out of generated images by default. Image models render lettering as convincing gibberish."
       ],
@@ -246,7 +246,7 @@
       "lead": "Not needed to write a post by hand. Switch it on once the writing already looks right to you.",
       "prose": [
         "Automatic posts are saved as drafts unless you say otherwise, and anything scoring below your threshold is held for review whatever you chose. The daily cap and the monthly token cap are both there to make a mistake cheap.",
-        "Pictures are optional. Pollinations needs no key. fal.ai and OpenAI charge per image and are only ever used when you pick one of them, never as a fallback."
+        "Pictures are optional. Pollinations needs no key. Drawing with your own AI charges that provider's per-image rate and is only ever used when you ask for it, never as a fallback."
       ],
       "steps": [],
       "points": [
@@ -383,7 +383,7 @@
       "a": [
         "The plugin is free and complete, and takes no cut of anything. The provider list is grouped by what it costs, free first, so the question is answered before you pick rather than after.",
         "The first group runs a model on your own computer: Ollama, LM Studio, Jan and llama.cpp. No account, no key, no bill, and nothing leaves the machine. The second needs a key but not a card: Google Gemini, Groq, Mistral and Hugging Face give away usage at no cost, and OpenRouter lists a number of models that are free to call. Everything the plugin does works the same on either — there is no paid tier here to unlock.",
-        "Pictures work the same way: Pollinations needs no key, Pexels and Pixabay are free with a free key, and fal.ai, OpenAI, Gemini and Grok charge per image and are only ever used if you pick one of them.",
+        "Pictures work the same way: Pollinations needs no key and no account, and drawing with your own AI charges that provider's per-image rate and is only ever used if you pick one of them.",
         "Free allowances move on each provider's schedule, so the settings screen links to every provider's own pricing page rather than repeating a number here that would go stale."
       ]
     },

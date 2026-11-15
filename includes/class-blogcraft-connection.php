@@ -730,7 +730,7 @@ class Blogcraft_Connection {
 				);
 			}
 			echo '</select>';
-			echo '<p class="description">' . esc_html__( 'Whichever you pick, Dicecodes AI Blog Writer falls back through the others so a post is never left without an image.', 'dicecodes-ai-blog-writer' ) . '</p>';
+			echo '<p class="description">' . esc_html__( 'Pollinations needs no key and no account. The other option draws with the AI you already write with, on the key you already pasted, and falls back to the free one if anything is missing, so a post is never left without an image.', 'dicecodes-ai-blog-writer' ) . '</p>';
 			echo '</td></tr>';
 
 			self::number_row(
@@ -740,9 +740,6 @@ class Blogcraft_Connection {
 			);
 
 			self::image_model_rows();
-
-			self::secret_row( 'pexels_api_key', __( 'Pexels API key', 'dicecodes-ai-blog-writer' ) );
-			self::secret_row( 'pixabay_api_key', __( 'Pixabay API key', 'dicecodes-ai-blog-writer' ) );
 
 			echo '</tbody></table>';
 			self::close_card();
@@ -2286,13 +2283,17 @@ class Blogcraft_Connection {
 		}
 
 		$pictures = (bool) Blogcraft_Settings::get( 'images_enabled' );
-		$service  = trim( (string) Blogcraft_Settings::get( 'image_provider' ) );
+
+		// Who is actually going to draw them, not which box is ticked. Asking
+		// for the writing AI and getting the free one because no model is named
+		// is exactly the state this line exists to show.
+		$drawing = Blogcraft_Image_Models::is_configured()
+			? Blogcraft_Image_Models::service()
+			: __( 'Pollinations, free', 'dicecodes-ai-blog-writer' );
 
 		$items[] = array(
 			'what' => __( 'Pictures', 'dicecodes-ai-blog-writer' ),
-			'is'   => $pictures
-				? ( '' === $service ? __( 'on', 'dicecodes-ai-blog-writer' ) : $service )
-				: __( 'off', 'dicecodes-ai-blog-writer' ),
+			'is'   => $pictures ? $drawing : __( 'off', 'dicecodes-ai-blog-writer' ),
 			'done' => $pictures,
 		);
 
@@ -2569,81 +2570,53 @@ class Blogcraft_Connection {
 	}
 
 	/**
-	 * Keys and model ids for the services that generate pictures.
+	 * The model id, and optionally a key, for drawing with the writing AI.
 	 *
 	 * Model ids are typed rather than picked from a list. Providers retire
 	 * models on their own schedule and this plugin has already shipped one dead
 	 * model id in a hint; a list baked in here would go stale silently. The
-	 * links go to each provider's live catalogue instead.
+	 * link goes to the provider's live catalogue instead.
 	 *
 	 * @return void
 	 */
 	private static function image_model_rows() {
-		$fal    = Blogcraft_Image_Models::help( 'fal' );
-		$openai = Blogcraft_Image_Models::help( 'openai' );
+		$service = Blogcraft_Image_Models::service();
+		$spec    = Blogcraft_Image_Models::help();
 
-		self::secret_row( 'fal_api_key', __( 'fal.ai API key', 'dicecodes-ai-blog-writer' ), 'blogcraft-image-fal' );
-		self::provider_link_row(
-			__( 'Where to get it', 'dicecodes-ai-blog-writer' ),
-			$fal['key_url'],
-			__( 'Create a fal.ai key', 'dicecodes-ai-blog-writer' ),
-			'',
-			'blogcraft-image-fal'
-		);
-
-		self::text_row( 'fal_model', __( 'fal.ai model', 'dicecodes-ai-blog-writer' ), 'blogcraft-image-fal' );
-		self::provider_link_row(
-			__( 'Which model', 'dicecodes-ai-blog-writer' ),
-			$fal['models_url'],
-			__( 'Browse text-to-image models', 'dicecodes-ai-blog-writer' ),
-			__( 'Paste the id exactly as the model page shows it, for example fal-ai/flux/schnell. Schnell is the cheapest and fastest. A pro FLUX model looks better and costs more. Ideogram is the one to pick if you need legible words in the picture.', 'dicecodes-ai-blog-writer' ),
-			'blogcraft-image-fal'
-		);
-
-		foreach ( array( 'gemini', 'xai' ) as $service ) {
-			$spec  = Blogcraft_Image_Models::help( $service );
-			$class = 'blogcraft-image-' . $service;
-
-			self::secret_row(
-				'image_key_' . $service,
-				sprintf(
-					/* translators: %s: the service name, such as Google AI Studio. */
-					__( '%s image key', 'dicecodes-ai-blog-writer' ),
-					$spec['label']
-				),
-				$class
+		if ( '' === $service ) {
+			// Say which case the reader is in rather than making them work it
+			// out from an empty field. Their writing provider cannot draw, so
+			// there is nothing here for them to fill in and the free service
+			// will make every picture.
+			printf(
+				'<tr class="blogcraft-image-same"><th scope="row">%1$s</th><td><p class="description">%2$s</p></td></tr>',
+				esc_html__( 'Image model', 'dicecodes-ai-blog-writer' ),
+				esc_html__( 'The AI you write with does not draw pictures. Pollinations will make them instead, free and with no key. To draw with your own AI, switch your writing provider to OpenAI, Google Gemini or xAI Grok.', 'dicecodes-ai-blog-writer' )
 			);
 
-			self::text_row(
-				'image_model_' . $service,
-				__( 'Image model', 'dicecodes-ai-blog-writer' ),
-				$class
-			);
-
-			self::provider_link_row(
-				__( 'Which model', 'dicecodes-ai-blog-writer' ),
-				$spec['models_url'],
-				__( 'See the image models', 'dicecodes-ai-blog-writer' ),
-				(string) Blogcraft_Settings::get( 'provider_type' ) === $service
-					? __( 'You are already writing with this provider, so leave the key blank and the same one draws the pictures. You still need to name an image model.', 'dicecodes-ai-blog-writer' )
-					: __( 'Your writing provider is a different company, so a key for this one is needed above.', 'dicecodes-ai-blog-writer' ),
-				$class
-			);
+			return;
 		}
 
-		self::secret_row( 'openai_image_key', __( 'OpenAI image key', 'dicecodes-ai-blog-writer' ), 'blogcraft-image-openai' );
-		self::text_row( 'openai_image_model', __( 'OpenAI image model', 'dicecodes-ai-blog-writer' ), 'blogcraft-image-openai' );
+		self::text_row( 'image_model', __( 'Image model', 'dicecodes-ai-blog-writer' ), 'blogcraft-image-same' );
 		self::provider_link_row(
 			__( 'Which model', 'dicecodes-ai-blog-writer' ),
-			$openai['models_url'],
-			__( 'OpenAI image guide', 'dicecodes-ai-blog-writer' ),
-			// Whether one key covers both depends entirely on who wrote the
-			// key, so say which case the reader is actually in rather than
-			// making them work it out.
-			'openai' === (string) Blogcraft_Settings::get( 'provider_type' )
-				? __( 'You are writing with OpenAI, so leave the key above blank and the same key makes the pictures. One key, one bill. You still need to name an image model here.', 'dicecodes-ai-blog-writer' )
-				: __( 'Your writing provider is not OpenAI, so a separate OpenAI key is needed above. A key from one company will not work at another.', 'dicecodes-ai-blog-writer' ),
-			'blogcraft-image-openai'
+			$spec['models_url'],
+			__( 'See the image models', 'dicecodes-ai-blog-writer' ),
+			sprintf(
+				/* translators: %s: the service name, such as Google AI Studio. */
+				__( 'Paste the id exactly as %s shows it. Leave this blank and pictures come from the free service instead.', 'dicecodes-ai-blog-writer' ),
+				$spec['label']
+			),
+			'blogcraft-image-same'
+		);
+
+		self::secret_row( 'image_api_key', __( 'Separate image key', 'dicecodes-ai-blog-writer' ), 'blogcraft-image-same' );
+		self::provider_link_row(
+			__( 'Where to get it', 'dicecodes-ai-blog-writer' ),
+			$spec['key_url'],
+			__( 'Create a key', 'dicecodes-ai-blog-writer' ),
+			__( 'Only if you want the pictures billed to a different account at the same company. Leave it blank and your writing key draws them: one key, one bill.', 'dicecodes-ai-blog-writer' ),
+			'blogcraft-image-same'
 		);
 	}
 
@@ -2742,7 +2715,7 @@ class Blogcraft_Connection {
 			array_keys( self::custom_fields() ),
 			array_keys( self::voice_text_fields() ),
 			array_keys( self::voice_area_fields() ),
-			array( 'provider_type', 'provider_draft_model', 'provider_request_template', 'autopilot_topics', 'autopilot_status', 'research_provider', 'research_base_url', 'research_urls', 'image_provider', 'fal_model', 'openai_image_model', 'image_model_gemini', 'image_model_xai', 'author_credentials', 'reviewer_name', 'reviewer_credentials' )
+			array( 'provider_type', 'provider_draft_model', 'provider_request_template', 'autopilot_topics', 'autopilot_status', 'research_provider', 'research_base_url', 'research_urls', 'image_provider', 'image_model', 'author_credentials', 'reviewer_name', 'reviewer_credentials' )
 		);
 
 		foreach ( $plain as $key ) {
@@ -2869,12 +2842,7 @@ class Blogcraft_Connection {
 		return array(
 			'provider_api_key',
 			'research_api_key',
-			'fal_api_key',
-			'openai_image_key',
-			'image_key_gemini',
-			'image_key_xai',
-			'pexels_api_key',
-			'pixabay_api_key',
+			'image_api_key',
 		);
 	}
 

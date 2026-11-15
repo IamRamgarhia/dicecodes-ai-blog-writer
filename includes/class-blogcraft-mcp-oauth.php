@@ -65,6 +65,11 @@ class Blogcraft_Mcp_Oauth {
 	const MAX_CLIENTS = 50;
 
 	/**
+	 * Registrations one caller may make in an hour.
+	 */
+	const MAX_REGISTRATIONS_PER_HOUR = 10;
+
+	/**
 	 * Hook everything up.
 	 *
 	 * @return void
@@ -215,6 +220,16 @@ class Blogcraft_Mcp_Oauth {
 			return self::oauth_error( 'invalid_request', 'This site is not accepting AI client connections.', 403 );
 		}
 
+		// Registration has to stay open -- OAuth dynamic client registration is
+		// unauthenticated by design, and a desktop AI client has no credential
+		// to present before it has one. What it does not have to be is
+		// unlimited: without this, anyone could post registrations until the
+		// cap evicted every real client and none of them could authorise
+		// again.
+		if ( ! self::registration_allowed() ) {
+			return self::oauth_error( 'too_many_requests', 'Too many registration attempts. Try again shortly.', 429 );
+		}
+
 		$body = (array) $request->get_json_params();
 		$uris = isset( $body['redirect_uris'] ) ? (array) $body['redirect_uris'] : array();
 		$kept = array();
@@ -243,15 +258,32 @@ class Blogcraft_Mcp_Oauth {
 			'name'    => sanitize_text_field( isset( $body['client_name'] ) ? (string) $body['client_name'] : '' ),
 			'uris'    => array_values( array_unique( $kept ) ),
 			'created' => time(),
+			// Set the first time this client completes an authorisation. Until
+			// then it is just a registration anybody could have made.
+			'used'    => 0,
 		);
 
 		// Registration is open, so the store is capped. Oldest first, because
 		// a client that has not been back in fifty registrations is not one
 		// anybody is waiting on.
 		if ( count( $clients ) > self::MAX_CLIENTS ) {
+			// Unused registrations go first, oldest of those first.
+			//
+			// Sorting purely by age meant a flood of anonymous registrations
+			// pushed out the clients somebody had actually connected, and
+			// those clients could no longer authorise. A registration that has
+			// never been through an authorisation is the one nobody is waiting
+			// on, so it is the one to drop.
 			uasort(
 				$clients,
 				static function ( $a, $b ) {
+					$a_used = empty( $a['used'] ) ? 0 : 1;
+					$b_used = empty( $b['used'] ) ? 0 : 1;
+
+					if ( $a_used !== $b_used ) {
+						return $a_used <=> $b_used;
+					}
+
 					return (int) $a['created'] <=> (int) $b['created'];
 				}
 			);
@@ -289,7 +321,7 @@ class Blogcraft_Mcp_Oauth {
 	 * @return void
 	 */
 	public static function register_consent_screen() {
-		add_submenu_page(
+		$hook = add_submenu_page(
 			'',
 			__( 'Connect an app', 'dicecodes-ai-blog-writer' ),
 			__( 'Connect an app', 'dicecodes-ai-blog-writer' ),
@@ -297,6 +329,8 @@ class Blogcraft_Mcp_Oauth {
 			'blogcraft-connect-app',
 			array( __CLASS__, 'render_consent' )
 		);
+
+		Blogcraft_Admin::title_for( $hook, __( 'Connect an app', 'dicecodes-ai-blog-writer' ) );
 	}
 
 	/**
@@ -515,6 +549,11 @@ class Blogcraft_Mcp_Oauth {
 
 		$code = bin2hex( random_bytes( 32 ) );
 
+		// From here on this client is one somebody actually connected, so the
+		// cap above will not drop it in favour of a fresh anonymous
+		// registration.
+		self::mark_client_used( $ask['client_id'] );
+
 		set_transient(
 			self::code_key( $code ),
 			array(
@@ -527,6 +566,54 @@ class Blogcraft_Mcp_Oauth {
 		);
 
 		self::bounce( $ask['redirect_uri'], array( 'code' => $code ), $ask['state'] );
+	}
+
+	/**
+	 * May this caller register another client right now?
+	 *
+	 * A small per-caller budget. Enough that a person setting up two or three
+	 * AI clients never meets it, little enough that the store cannot be
+	 * churned from one place.
+	 *
+	 * @return bool
+	 */
+	private static function registration_allowed() {
+		$who = isset( $_SERVER['REMOTE_ADDR'] )
+			? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) )
+			: '';
+
+		$key   = 'blogcraft_mcp_reg_' . md5( $who );
+		$tries = (int) get_transient( $key );
+
+		if ( $tries >= self::MAX_REGISTRATIONS_PER_HOUR ) {
+			return false;
+		}
+
+		set_transient( $key, $tries + 1, HOUR_IN_SECONDS );
+
+		return true;
+	}
+
+	/**
+	 * Note that a client has completed an authorisation.
+	 *
+	 * @param string $client_id Client.
+	 * @return void
+	 */
+	private static function mark_client_used( $client_id ) {
+		$clients = self::clients();
+
+		if ( ! isset( $clients[ $client_id ] ) ) {
+			return;
+		}
+
+		if ( ! empty( $clients[ $client_id ]['used'] ) ) {
+			return;
+		}
+
+		$clients[ $client_id ]['used'] = time();
+
+		update_option( self::CLIENTS, $clients, false );
 	}
 
 	// --------------------------------------------------------------- tokens.

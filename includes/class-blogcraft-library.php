@@ -194,13 +194,7 @@ class Blogcraft_Library {
 			printf(
 				'<td><a class="button button-small" href="%1$s">%2$s</a></td>',
 				esc_url(
-					add_query_arg(
-						array(
-							'page' => Blogcraft_Progress::PAGE_SLUG,
-							'job'  => (int) $row['id'],
-						),
-						admin_url( 'admin.php' )
-					)
+					Blogcraft_Progress::url( (int) $row['id'] )
 				),
 				esc_html__( 'Open', 'dicecodes-ai-blog-writer' )
 			);
@@ -289,13 +283,7 @@ class Blogcraft_Library {
 			printf(
 				'<a class="button button-primary button-small" href="%1$s">%2$s</a>',
 				esc_url(
-					add_query_arg(
-						array(
-							'page' => Blogcraft_Progress::PAGE_SLUG,
-							'job'  => (int) $row['id'],
-						),
-						admin_url( 'admin.php' )
-					)
+					Blogcraft_Progress::url( (int) $row['id'] )
 				),
 				esc_html__( 'Read it', 'dicecodes-ai-blog-writer' )
 			);

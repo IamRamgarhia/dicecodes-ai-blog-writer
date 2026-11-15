@@ -63,7 +63,7 @@ class Blogcraft_Review {
 			$label .= sprintf( ' <span class="update-plugins count-%1$d"><span class="update-count">%1$d</span></span>', $waiting );
 		}
 
-		add_submenu_page(
+		$hook = add_submenu_page(
 			// A menu entry for an empty queue is a permanent nudge about
 			// nothing. Passing null as the parent registers the page without
 			// listing it, so a link from Overview or a bookmark still works
@@ -75,6 +75,10 @@ class Blogcraft_Review {
 			self::PAGE_SLUG,
 			array( __CLASS__, 'render' )
 		);
+
+		// Only needed while the page is hidden, but harmless when it is not:
+		// get_admin_page_title() leaves a title that is already set alone.
+		Blogcraft_Admin::title_for( $hook, __( 'Needs review', 'dicecodes-ai-blog-writer' ) );
 	}
 
 	/**

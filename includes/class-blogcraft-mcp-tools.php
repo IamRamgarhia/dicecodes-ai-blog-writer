@@ -716,7 +716,13 @@ class Blogcraft_Mcp_Tools {
 		$post    = self::ours( $post_id );
 
 		if ( ! $post ) {
-			return self::fail( 'That is not a draft this connection created.' );
+			return self::fail( 'That is not a draft this connection created, or this connection may not edit it.' );
+		}
+
+		// Editing a draft and putting it in front of the public are different
+		// permissions, and a contributor has the first without the second.
+		if ( ! current_user_can( 'publish_post', (int) $post_id ) ) {
+			return self::fail( 'This connection may edit that draft but not publish it.' );
 		}
 
 		$blueprint = Blogcraft_Blueprint::get();
@@ -1203,20 +1209,44 @@ class Blogcraft_Mcp_Tools {
 		$topic = isset( $args['topic'] ) ? trim( (string) $args['topic'] ) : '';
 		$topic = ( '' === $topic ) ? (string) get_post_meta( $post_id, '_blogcraft_topic', true ) : $topic;
 		$topic = ( '' === $topic ) ? $post->post_title : $topic;
-		$did   = 0;
 
 		try {
-			$did += (int) Blogcraft_Images::attach_featured( $post_id, $post->post_title, $topic );
-			$did += (int) Blogcraft_Images::add_section_images( $post_id, self::article_shape( $post ), 3 );
+			// An id, not a count: one picture, however large its id.
+			$featured = Blogcraft_Images::attach_featured( $post_id, $post->post_title, $topic ) ? 1 : 0;
+			$sections = (int) Blogcraft_Images::add_section_images( $post_id, self::article_shape( $post ), 3 );
 		} catch ( Throwable $e ) {
 			return self::fail( 'The picture service could not be reached: ' . $e->getMessage() );
 		}
 
-		if ( $did < 1 ) {
+		if ( $featured < 1 && $sections < 1 ) {
 			return self::ok( 'Nothing to add — it already has the pictures it is getting.' );
 		}
 
-		return self::ok( sprintf( 'Added %d pictures. Read the draft in WordPress to see them.', $did ) );
+		// Said in full, because "pictures were added" and then finding one is
+		// how a client comes to distrust what these tools tell it. A site with
+		// per-section pictures switched off gets one featured image and should
+		// hear exactly that.
+		$told = array();
+
+		if ( $featured > 0 ) {
+			$told[] = 'a featured image';
+		}
+
+		if ( $sections > 0 ) {
+			$told[] = sprintf(
+				/* translators: %d: how many pictures were placed inside the article. */
+				_n( '%d picture in the article', '%d pictures in the article', $sections, 'dicecodes-ai-blog-writer' ),
+				$sections
+			);
+		}
+
+		return self::ok(
+			sprintf(
+				/* translators: %s: what was added, such as "a featured image and 3 pictures in the article". */
+				__( 'Added %s. Read the draft in WordPress to see them.', 'dicecodes-ai-blog-writer' ),
+				implode( ' and ', $told )
+			)
+		);
 	}
 	/**
 	 * A post this connection is allowed to touch.
@@ -1236,6 +1266,22 @@ class Blogcraft_Mcp_Tools {
 		}
 
 		if ( ! get_post_meta( $post_id, '_blogcraft_mcp', true ) ) {
+			return null;
+		}
+
+		// WordPress decides, per post, not this plugin.
+		//
+		// Carrying the _blogcraft_mcp mark only says the post came from a
+		// connected client; it says nothing about whether *this* user may
+		// touch *this* post. Without the check below, anyone holding a token
+		// with manage_blogcraft could edit or publish a post another user had
+		// created, their own published posts included, because the only gate
+		// was a capability that is not post-specific.
+		//
+		// current_user_can( 'edit_post', $id ) resolves the post's own type,
+		// status and author, so a contributor's token stops at somebody
+		// else's work and at anything already published.
+		if ( ! current_user_can( 'edit_post', (int) $post_id ) ) {
 			return null;
 		}
 

@@ -80,7 +80,7 @@ class Blogcraft_Welcome {
 	 * @return void
 	 */
 	public static function register_menu() {
-		add_submenu_page(
+		$hook = add_submenu_page(
 			'',
 			__( 'Welcome to Dicecodes AI Blog Writer', 'dicecodes-ai-blog-writer' ),
 			__( 'Welcome to Dicecodes AI Blog Writer', 'dicecodes-ai-blog-writer' ),
@@ -88,6 +88,8 @@ class Blogcraft_Welcome {
 			self::PAGE_SLUG,
 			array( __CLASS__, 'render' )
 		);
+
+		Blogcraft_Admin::title_for( $hook, __( 'Welcome to Dicecodes AI Blog Writer', 'dicecodes-ai-blog-writer' ) );
 	}
 
 	/**

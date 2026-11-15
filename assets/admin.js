@@ -201,7 +201,7 @@ function syncKey() {
 /**
  * Show a picture service's key and model fields only when it is selected.
  *
- * Same reasoning as the custom-endpoint rows above: a fal.ai key field sitting
+ * Same reasoning as the custom-endpoint rows above: a model field sitting
  * under a Pollinations selection reads as required setup, and that is the
  * commonest way to get stuck on a settings screen.
  */
@@ -214,7 +214,7 @@ function syncKey() {
 		return;
 	}
 
-	var groups = [ 'fal', 'openai', 'gemini', 'xai' ];
+	var groups = [ 'same' ];
 
 	function sync() {
 		for ( var g = 0; g < groups.length; g++ ) {

@@ -4,7 +4,7 @@ Tags: ai content generator, ai writer, autoblogging, seo content, blog automatio
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.3.3
+Stable tag: 1.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -113,13 +113,10 @@ Dicecodes AI Blog Writer has no server of its own. It collects no analytics and 
 * Hacker News search, via Algolia (hn.algolia.com) — the topic is sent as a search query. No account or key. https://www.algolia.com/policies/terms and https://www.algolia.com/policies/privacy
 * A SearXNG instance you host yourself — the address is one you enter, so no third party is reached and there is no policy to link.
 
-**Image providers** — off until you switch pictures on, which is how you choose one. A short description of the wanted picture is sent so one can be found or generated; the post itself never is. fal.ai, OpenAI, Gemini and Grok charge per image and are used only when chosen, so nothing is billed by accident.
+**Image providers** — off until you switch pictures on. There are two choices: the free service, or the same AI that writes the post. A short description of the wanted picture is sent so one can be generated; the post itself never is. Drawing with your writing AI charges its per-image rate and happens only when you choose it, so nothing is billed by accident.
 
-* Pollinations (image.pollinations.ai) — https://pollinations.ai — publishes no terms or privacy page; offered because it needs no account.
-* fal.ai (fal.run) — refuses automated requests, so its terms and privacy pages cannot be linked here; both are reachable from fal.ai itself.
-* OpenAI, Google Gemini and xAI for Grok — the same three services, hosts and policies listed under AI providers above.
-* Pexels (api.pexels.com) — https://www.pexels.com/terms-of-service/ and https://www.pexels.com/privacy-policy/ — served to people, but automated checks are refused with a 403.
-* Pixabay (pixabay.com) — https://pixabay.com/service/terms/ and https://pixabay.com/service/privacy/ — rate limited, so an automated check may see 403 on one attempt and 200 on the next.
+* Pollinations (image.pollinations.ai) — https://pollinations.ai/terms and https://pollinations.ai/privacy — offered because it needs no account; its privacy policy covers this host by name as its keyless free API. Used whenever nothing else is set up.
+* OpenAI, Google Gemini and xAI for Grok — the same three services, hosts and policies listed under AI providers above. Only the one you already write with is ever called, on the key you already gave it.
 
 **Search engine notification** — off unless switched on under Settings, Automation.
 
@@ -147,7 +144,7 @@ The plugin is free and complete, and takes no cut of anything. The provider list
 
 The first group runs a model on your own computer: Ollama, LM Studio, Jan and llama.cpp. No account, no key, no bill, and nothing leaves the machine. The second needs a key but not a card: Google Gemini, Groq, Mistral and Hugging Face give away usage at no cost, and OpenRouter lists a number of models that are free to call. Everything the plugin does works the same on either — there is no paid tier here to unlock.
 
-Pictures work the same way: Pollinations needs no key, Pexels and Pixabay are free with a free key, and fal.ai, OpenAI, Gemini and Grok charge per image and are only ever used if you pick one of them.
+Pictures work the same way: Pollinations needs no key and no account, and drawing with your own AI charges that provider's per-image rate and is only ever used if you ask for it. If you write with OpenAI, Gemini or Grok, the key you already pasted draws the pictures too — one key, one bill.
 
 Free allowances move on each provider's schedule, so the settings screen links to every provider's own pricing page rather than repeating a number here that would go stale.
 
@@ -184,10 +181,15 @@ They are encrypted before being stored, shown only as a mask, and never written 
 
 == Changelog ==
 
-= Changelog ==
-
-The complete history. The most recent releases are also in readme.txt;
-everything is here, oldest at the bottom.
+= 1.4.0 =
+* Fixes everything raised in the Plugins Team review of 11 November 2026
+* Security: links to the progress screen are signed, so a crafted link can no longer set an administrator's browser writing a post. Every MCP write now asks WordPress whether this user may edit this post, instead of checking one capability that was not post-specific. An MCP request is held to an explicit list of capabilities, so a connected client cannot administer the site even when an administrator owns the token. OAuth client registration is rate limited, and eviction drops never-used registrations first
+* Fixed: posts could stop with the bar frozen and no error. A stage that outran the host's time limit left the job locked and nothing released it, so the screen polled a job it could never claim. It now releases an abandoned lock itself rather than waiting on an hourly cron job a quiet site never fires
+* Pictures are now one question with two answers: the free service, or the same AI that writes the post. If you write with OpenAI, Gemini or Grok, the key you already pasted draws the pictures too
+* Removed fal.ai, Pexels and Pixabay. Between them they wanted three more accounts and three more keys. Ten image settings are now two, and existing sites are carried across on upgrade
+* Corrected the readme: Pollinations does publish terms and a privacy policy, and that policy covers by name the host this plugin calls
+* Two MCP tools claimed credit for pictures they had not added: a single featured image was reported to the connected client as "Added 9 pictures", because the function answering was returning an attachment id rather than saying what it had done, and publishing reported adding a featured image whether or not it had
+* Four screens each produced a PHP deprecation on PHP 8.1 and later: a screen registered without a menu entry has no title for core to find, which left core calling strip_tags() on null. The warning named a core file but the cause was ours
 
 = 1.3.3 =
 * A body sent by a connected app is narrowed before it becomes a post. The helper that turns HTML into blocks returns anything already carrying a block delimiter exactly as it arrived — right for markup this plugin wrote and reads back, wrong for markup that came from somewhere else, because a body merely beginning with one went into the post whole. The same helper was already being given narrowed input everywhere else it is used
@@ -200,13 +202,5 @@ everything is here, oldest at the bottom.
 * The provider call deliberately keeps the plain fetch, because Ollama, LM Studio, Jan and llama.cpp all answer on localhost and the careful call refuses loopback. A test records that reason alongside the three other exemptions, so the next person to tidy this does not quietly break every local model
 * The translation catalogue still announced itself as "Blogcraft" and declared the old text domain. The rename updated the filename and the scanner but not the header inside it, which is the part a translation tool actually reads. Both now come from the same constant as everything else
 
-= 1.3.1 =
-* Every AI provider now carries its own terms and privacy links. Ten of them — xAI, Moonshot, DeepSeek, Groq, OpenRouter, Mistral, Together, Fireworks, Cerebras and Hugging Face — were listed on one shared line saying the policies vary and to check whichever you pick. The directory asks for links per service, and that line had none
-* Each entry also names the address it actually contacts, so what the plugin reaches and what the readme claims can be compared without reading the code
-* Two picture services publish policy pages that are served to people but refuse automated readers. Both are now marked as such, the way fal.ai already was, because an automated link check reports a failure for a page that is genuinely there
-* The self-hosted options — SearXNG, Ollama, LM Studio, Jan, llama.cpp and a custom endpoint — say plainly that the address is yours and reaches no third party, rather than being listed with nothing beside them
-* Giving every service its own links pushed the section past the 5,000 characters the readme parser keeps, which would have cut the last services back off. It is written tighter and fits, and a test holds it there
-* A test compares the readme against the code and the provider list: an address the plugin can reach and does not disclose fails, and so does a service named without either a policy link or a stated reason there is none
-* Said why the two base64 calls in the key encryption are there. Both were suppressed warnings with no explanation beside them, which reads worse than the thing it was hiding
 Older releases are listed in changelog.txt, which ships with the plugin.
 

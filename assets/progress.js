@@ -32,6 +32,8 @@
 	}
 
 	var failures = 0;
+	// Replies in a row that advanced nothing. See advance().
+	var stalled = 0;
 
 	// Anchored to when the job started, not when this page loaded.
 	// Refreshing a post that had been writing for four minutes used to
@@ -211,6 +213,37 @@
 					return;
 				}
 
+				// A reply that moved nothing is not progress.
+				//
+				// The server answers 200 whether it ran a stage or could not
+				// claim the job at all, and this treated both as a step
+				// forward: it counted one, cleared the failure tally and asked
+				// again in 400ms. A job that could not be claimed therefore
+				// polled four times without end, while the bar climbed on a
+				// counter that nothing was driving. That is the "stuck with no
+				// progress" this page was reported for.
+				//
+				// Backing off rather than giving up, because this page cannot
+				// tell the two reasons apart. The job may be abandoned -- the
+				// server releases a stale lock before answering, so that case
+				// recovers by itself on a later try -- or it may be held by
+				// another tab open on the same post, which will release it
+				// when its stage finishes. Declaring it dead would be wrong in
+				// the second case, and polling four times a second is wrong in
+				// both.
+				if ( false === state.advanced ) {
+					stalled++;
+
+					if ( stalled > 2 && note ) {
+						note.textContent = config.stuck || 'Waiting. This post may be running in another tab.';
+					}
+
+					window.setTimeout( advance, Math.min( 15000, 2000 * stalled ) );
+
+					return;
+				}
+
+				stalled = 0;
 				stepsDone++;
 				paint( state );
 				live( state );
@@ -243,6 +276,23 @@
 	if ( config.settled ) {
 		if ( note ) {
 			note.textContent = config.done || 'Finished.';
+		}
+
+		return;
+	}
+
+	// Reading an unfinished job without driving it.
+	//
+	// autostart is false when the job in the address came from a link rather
+	// than from this plugin. Advancing it would mean a crafted link could make
+	// whoever opened it spend money at a provider and publish a post, which the
+	// AJAX nonce cannot prevent -- that nonce is minted by this very page.
+	//
+	// So the screen still shows the job, it just does not set it running. The
+	// reader can start it from the button, which is their own click.
+	if ( false === config.autostart ) {
+		if ( note ) {
+			note.textContent = config.idle || 'Open this job from the Activity screen to continue it.';
 		}
 
 		return;

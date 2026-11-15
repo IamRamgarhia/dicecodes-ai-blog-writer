@@ -80,9 +80,101 @@ class Blogcraft_Migrator {
 		dbDelta( $jobs_sql );
 		dbDelta( $log_sql );
 
+		self::fold_up_image_settings();
+
 		if ( self::table_exists( $jobs ) && self::table_exists( $log ) ) {
 			update_option( self::VERSION_OPTION, BLOGCRAFT_DB_VERSION, false );
 		}
+	}
+
+	/**
+	 * Carry a site's image setup across the 1.4.0 simplification.
+	 *
+	 * Pictures used to mean choosing one of five services and then filling in
+	 * that service's own key and model id -- ten settings, four of which were
+	 * keys to accounts at companies the site had no other reason to deal with.
+	 * It is now one question with two answers: the free service, or the same AI
+	 * that writes the post.
+	 *
+	 * So the old values have to be read where they still are, which is the
+	 * stored option: the schema no longer defines these keys, and
+	 * Blogcraft_Settings::get() answers null for a key it does not know.
+	 *
+	 * What happens to each old choice:
+	 *
+	 * - openai, gemini or xai, and the same company wrote the post: 'same',
+	 *   keeping the model id. The writing key draws the pictures, which is
+	 *   what the separate image key was usually a copy of anyway.
+	 * - openai, gemini or xai, but a different company wrote the post: there
+	 *   is no longer a way to express that, so it becomes the free service
+	 *   rather than quietly drawing with the wrong account.
+	 * - fal, pexels or pixabay: the free service. Nothing can be carried over
+	 *   -- the model ids and the search APIs do not exist here.
+	 *
+	 * The four dead keys are deleted rather than left behind, because a stored
+	 * secret nothing can reach is a liability and not a feature.
+	 *
+	 * @return void
+	 */
+	private static function fold_up_image_settings() {
+		$stored = get_option( Blogcraft_Settings::OPTION, array() );
+
+		if ( ! is_array( $stored ) || array() === $stored ) {
+			return;
+		}
+
+		$was    = isset( $stored['image_provider'] ) ? (string) $stored['image_provider'] : '';
+		$writer = isset( $stored['provider_type'] ) ? (string) $stored['provider_type'] : '';
+		$models = array(
+			'openai' => 'openai_image_model',
+			'gemini' => 'image_model_gemini',
+			'xai'    => 'image_model_xai',
+		);
+		$keys   = array(
+			'openai' => 'openai_image_key',
+			'gemini' => 'image_key_gemini',
+			'xai'    => 'image_key_xai',
+		);
+
+		$dead = array_merge(
+			array_values( $models ),
+			array_values( $keys ),
+			array( 'fal_api_key', 'fal_model', 'pexels_api_key', 'pixabay_api_key' )
+		);
+
+		$remap  = in_array( $was, array( 'fal', 'pexels', 'pixabay', 'openai', 'gemini', 'xai' ), true );
+		$strand = (bool) array_intersect( $dead, array_keys( $stored ) );
+
+		// Nothing stored from before and nothing to remap: already folded, or
+		// a site that never used any of this. Returning here is what makes the
+		// migration safe to run again -- migrate() runs on every version
+		// change, and folding a folded option would undo a choice made since.
+		if ( ! $remap && ! $strand ) {
+			return;
+		}
+
+		// The sweep runs even when the provider is not one being remapped.
+		// A site that pasted an image key without ever choosing the provider
+		// for it would otherwise keep that key in the database with nothing
+		// able to reach it, which is a liability rather than a setting.
+		if ( $remap && isset( $models[ $was ] ) && $was === $writer ) {
+			$stored['image_provider'] = 'same';
+			$stored['image_model']    = isset( $stored[ $models[ $was ] ] ) ? (string) $stored[ $models[ $was ] ] : '';
+
+			// Still ciphertext, and still the same cipher, so it moves across
+			// without being decrypted and re-encrypted.
+			if ( ! empty( $stored[ $keys[ $was ] ] ) ) {
+				$stored['image_api_key'] = (string) $stored[ $keys[ $was ] ];
+			}
+		} elseif ( $remap ) {
+			$stored['image_provider'] = 'pollinations';
+		}
+
+		foreach ( $dead as $gone ) {
+			unset( $stored[ $gone ] );
+		}
+
+		update_option( Blogcraft_Settings::OPTION, $stored, false );
 	}
 
 	/**

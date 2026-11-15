@@ -132,12 +132,54 @@ class Blogcraft_Worker {
 	}
 
 	/**
+	 * Give one stage enough time to finish.
+	 *
+	 * A stage talks to an AI provider through Blogcraft_Http, which allows 60
+	 * seconds per attempt and retries up to three times, so a slow model can
+	 * legitimately occupy about three minutes. Shared hosting commonly sets
+	 * max_execution_time to 30 or 60, and PHP then killed the request part way
+	 * through. Nothing catches that: claim_job() had already marked the job
+	 * 'running', so it stayed locked and the screen polled a job that could
+	 * never be claimed again -- the stall this pairs with reclaim_stale() in
+	 * Blogcraft_Progress::handle_advance().
+	 *
+	 * Raised here and nowhere else. execute() is the only function that runs a
+	 * stage, so the extra time applies to writing a post and to nothing else:
+	 * not a settings screen, not an ordinary page view.
+	 *
+	 * @return void
+	 */
+	private static function make_room_for_a_stage() {
+		if ( ! function_exists( 'set_time_limit' ) ) {
+			return;
+		}
+
+		$disabled = array_map( 'trim', explode( ',', (string) ini_get( 'disable_functions' ) ) );
+
+		if ( in_array( 'set_time_limit', $disabled, true ) ) {
+			return;
+		}
+
+		// 0 already means no limit; raising it would be meaningless.
+		if ( 0 === (int) ini_get( 'max_execution_time' ) ) {
+			return;
+		}
+
+		// Enough for the HTTP budget above plus the work around it, without
+		// removing the host's ceiling altogether.
+		// phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged, WordPress.PHP.NoSilencedErrors.Discouraged -- a host that refuses simply keeps its own limit.
+		@set_time_limit( 300 );
+	}
+
+	/**
 	 * Run one job's current stage.
 	 *
 	 * @param Blogcraft_Job $job Claimed job.
 	 * @return void
 	 */
 	private static function execute( Blogcraft_Job $job ) {
+		self::make_room_for_a_stage();
+
 		$key = $job->pipeline . ':' . $job->stage;
 
 		if ( ! isset( self::$stages[ $key ] ) ) {

@@ -6,10 +6,10 @@
 
 [![License: GPLv2](https://img.shields.io/badge/License-GPLv2-green.svg)](LICENSE)
 [![WordPress](https://img.shields.io/badge/WordPress-6.0%2B-blue.svg?logo=wordpress)](#-install)
-[![Version](https://img.shields.io/badge/Version-0.72.0-orange.svg)](https://github.com/IamRamgarhia/wordpress-ai-blog-writer/releases)
+[![Version](https://img.shields.io/badge/Version-1.4.0-orange.svg)](https://github.com/IamRamgarhia/dicecodes-ai-blog-writer/releases)
 [![PHP](https://img.shields.io/badge/PHP-7.4%20to%208.5-777BB4.svg?logo=php)](#-install)
-[![Tests](https://img.shields.io/badge/Tests-705%20passing-brightgreen.svg)](#-contributing)
-[![GitHub Stars](https://img.shields.io/github/stars/IamRamgarhia/wordpress-ai-blog-writer?style=social)](https://github.com/IamRamgarhia/wordpress-ai-blog-writer)
+[![Tests](https://img.shields.io/badge/Tests-934%20passing-brightgreen.svg)](#-contributing)
+[![GitHub Stars](https://img.shields.io/github/stars/IamRamgarhia/dicecodes-ai-blog-writer?style=social)](https://github.com/IamRamgarhia/dicecodes-ai-blog-writer)
 [![Cost](https://img.shields.io/badge/Cost-100%25%20Free-brightgreen.svg)](#-why-choose-this-plugin)
 [![Docs](https://img.shields.io/badge/Docs-dicecodes.com-3858e9.svg)](https://dicecodes.com/ai-blog-writer/)
 
@@ -21,7 +21,7 @@ It reads current sources before writing, drafts in a voice you describe, reads i
 
 **Looking for:** a free AI writing plugin with no monthly subscription · an AI content generator that uses your own OpenAI or Gemini key · a self-hosted alternative to credit-based AI writers · a way to run AI blogging on a local model with no key at all? That is what this is.
 
-[Download Now](https://github.com/IamRamgarhia/wordpress-ai-blog-writer/releases/latest) &nbsp;|&nbsp; [Documentation](https://dicecodes.com/ai-blog-writer/) &nbsp;|&nbsp; [Quick Start](#-your-first-post-in-5-minutes) &nbsp;|&nbsp; [How It Works](#-how-it-writes) &nbsp;|&nbsp; [FAQ](#-frequently-asked-questions) &nbsp;|&nbsp; [Report Bug](https://github.com/IamRamgarhia/wordpress-ai-blog-writer/issues) &nbsp;|&nbsp; [Request Feature](https://github.com/IamRamgarhia/wordpress-ai-blog-writer/issues)
+[Download Now](https://github.com/IamRamgarhia/dicecodes-ai-blog-writer/releases/latest) &nbsp;|&nbsp; [Documentation](https://dicecodes.com/ai-blog-writer/) &nbsp;|&nbsp; [Quick Start](#-your-first-post-in-5-minutes) &nbsp;|&nbsp; [How It Works](#-how-it-writes) &nbsp;|&nbsp; [FAQ](#-frequently-asked-questions) &nbsp;|&nbsp; [Report Bug](https://github.com/IamRamgarhia/dicecodes-ai-blog-writer/issues) &nbsp;|&nbsp; [Request Feature](https://github.com/IamRamgarhia/dicecodes-ai-blog-writer/issues)
 
 </div>
 
@@ -31,7 +31,7 @@ It reads current sources before writing, drafts in a voice you describe, reads i
 
 ### From a release zip
 
-1. Download the latest `dicecodes-ai-blog-writer-x.y.z.zip` from [Releases](https://github.com/IamRamgarhia/wordpress-ai-blog-writer/releases/latest).
+1. Download the latest `dicecodes-ai-blog-writer-x.y.z.zip` from [Releases](https://github.com/IamRamgarhia/dicecodes-ai-blog-writer/releases/latest).
 2. In WordPress: **Plugins → Add Plugin → Upload Plugin**.
 3. Choose the zip, install, activate.
 
@@ -40,8 +40,8 @@ It reads current sources before writing, drafts in a voice you describe, reads i
 ### From source
 
 ```bash
-git clone https://github.com/IamRamgarhia/wordpress-ai-blog-writer.git
-cd wordpress-ai-blog-writer
+git clone https://github.com/IamRamgarhia/dicecodes-ai-blog-writer.git
+cd dicecodes-ai-blog-writer
 composer install --no-dev
 ```
 
@@ -190,7 +190,7 @@ Failures come with an instruction the rewrite can act on. Where a failure is abo
 
 **Editors:** Real Gutenberg blocks, every paragraph and heading editable. On a Classic Editor site it writes plain HTML instead.
 
-**Pictures:** Pollinations (no key) · Pexels · Pixabay · fal.ai · OpenAI · Gemini · Grok. Paid services are only used when you pick one, never as a fallback.
+**Pictures:** Pollinations (no key, no account) or the same AI that writes the post — OpenAI, Gemini or Grok, on the key you already pasted. Drawing with your own AI costs that provider's per-image rate and happens only when you ask for it, never as a fallback.
 
 ---
 
@@ -295,7 +295,7 @@ The test suite is the specification. Every fix here ships with a test that fails
 
 ## 💬 Support
 
-- **Found a bug?** [Open an issue](https://github.com/IamRamgarhia/wordpress-ai-blog-writer/issues)
+- **Found a bug?** [Open an issue](https://github.com/IamRamgarhia/dicecodes-ai-blog-writer/issues)
 - **Documentation:** [dicecodes.com/ai-blog-writer](https://dicecodes.com/ai-blog-writer/)
 
 ---

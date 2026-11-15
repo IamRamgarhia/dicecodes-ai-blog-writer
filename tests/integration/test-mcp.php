@@ -838,6 +838,212 @@ class Test_Blogcraft_Mcp extends WP_UnitTestCase {
 		}
 	}
 
+	public function test_add_pictures_reports_a_count_and_not_an_attachment_id() {
+		// The bug this closes: attach_featured() answers with the attachment
+		// id, and add_pictures() added it to a total. One featured image that
+		// happened to be attachment 9 was reported as "Added 9 pictures", and
+		// on a site with a fuller media library the number would have been
+		// larger still.
+		//
+		// The attachment id is forced well above any believable count, so a
+		// total that is really an id cannot pass by coincidence.
+		Blogcraft_Settings::set( 'images_enabled', true );
+		Blogcraft_Settings::set( 'images_per_section', false );
+
+		$out = $this->rpc(
+			'tools/call',
+			array(
+				'name'      => 'create_draft',
+				'arguments' => array(
+					'title' => 'A post that wants a picture',
+					'html'  => '<h2>One</h2><p>Some words in a paragraph here.</p>',
+				),
+			)
+		);
+
+		$this->assertFalse( $out['body']['result']['isError'] );
+
+		$posts = get_posts(
+			array(
+				'post_type'   => 'post',
+				'post_status' => 'draft',
+				'title'       => 'A post that wants a picture',
+			)
+		);
+
+		$this->assertCount( 1, $posts );
+		$post_id = (int) $posts[0]->ID;
+
+		// Stand in for the picture service: a real attachment, with an id that
+		// is nothing like a plausible number of pictures.
+		$attachment = self::factory()->attachment->create_object(
+			array(
+				'file'           => 'picture.jpg',
+				'post_mime_type' => 'image/jpeg',
+				'post_title'     => 'A picture',
+			),
+			0,
+			array( 'post_status' => 'inherit' )
+		);
+
+		set_post_thumbnail( $post_id, $attachment );
+		$this->assertGreaterThan( 1, (int) $attachment, 'the stand-in id must not be 1' );
+
+		$said = (string) $this->rpc(
+			'tools/call',
+			array(
+				'name'      => 'add_pictures',
+				'arguments' => array( 'post_id' => $post_id ),
+			)
+		)['body']['result']['content'][0]['text'];
+
+		// It already had its featured image and per-section pictures are off,
+		// so the honest answer is that there was nothing to do. Claiming a
+		// featured image here is claiming credit for the one already present.
+		$this->assertStringContainsString(
+			'Nothing to add',
+			$said,
+			'add_pictures claimed a picture it did not add: "' . $said . '"'
+		);
+
+		// And the attachment id must not appear as a number of pictures.
+		$this->assertStringNotContainsString(
+			' ' . $attachment . ' picture',
+			$said,
+			'add_pictures reported the attachment id as a count: "' . $said . '"'
+		);
+	}
+
+	public function test_add_pictures_says_what_it_added_when_it_adds_something() {
+		// The other side of the test above: with nothing attached yet, the
+		// tool does add a featured image and should say so. Without this, the
+		// assertion above could be satisfied by a tool that never adds
+		// anything at all.
+		Blogcraft_Settings::set( 'images_enabled', true );
+		Blogcraft_Settings::set( 'images_per_section', false );
+
+		$this->rpc(
+			'tools/call',
+			array(
+				'name'      => 'create_draft',
+				'arguments' => array(
+					'title' => 'A post with no picture yet',
+					'html'  => '<h2>One</h2><p>Some words in a paragraph here.</p>',
+				),
+			)
+		);
+
+		$posts = get_posts(
+			array(
+				'post_type'   => 'post',
+				'post_status' => 'draft',
+				'title'       => 'A post with no picture yet',
+			)
+		);
+
+		$this->assertCount( 1, $posts );
+		$post_id = (int) $posts[0]->ID;
+		$this->assertFalse( has_post_thumbnail( $post_id ), 'it must start with no featured image' );
+
+		// The picture service is not reachable from the test runner, so this
+		// asserts the branch rather than a successful download: either it
+		// added one and says so, or it could not fetch one and says that.
+		// What it must never say is that it added something when it did not.
+		$said = (string) $this->rpc(
+			'tools/call',
+			array(
+				'name'      => 'add_pictures',
+				'arguments' => array( 'post_id' => $post_id ),
+			)
+		)['body']['result']['content'][0]['text'];
+
+		if ( has_post_thumbnail( $post_id ) ) {
+			$this->assertStringContainsString( 'a featured image', $said, $said );
+		} else {
+			$this->assertStringContainsString( 'Nothing to add', $said, $said );
+		}
+	}
+
+	public function test_publishing_does_not_claim_a_featured_image_it_did_not_add() {
+		// The second caller the root cause was lying to. attach_featured()
+		// used to answer with the id of a picture already present, so
+		// publish_draft reported "Added: a featured image" on every publish,
+		// whether or not it had just added one.
+		Blogcraft_Settings::set( 'images_enabled', true );
+		Blogcraft_Settings::set( 'images_per_section', false );
+
+		// The quality gate would otherwise refuse this stub post, and the
+		// assertion below would then pass on a refusal message that mentions
+		// no pictures at all -- proving nothing. The publish has to succeed
+		// for the question to be asked.
+		Blogcraft_Settings::set( 'quality_threshold', 0 );
+
+		$post_id = self::factory()->post->create(
+			array(
+				'post_status'  => 'draft',
+				'post_title'   => 'Already illustrated',
+				'post_content' => '<p>Words.</p>',
+				'post_author'  => $this->author,
+			)
+		);
+		update_post_meta( $post_id, '_blogcraft_mcp', 1 );
+
+		$attachment = self::factory()->attachment->create_object(
+			array(
+				'file'           => 'already.jpg',
+				'post_mime_type' => 'image/jpeg',
+			),
+			0,
+			array( 'post_status' => 'inherit' )
+		);
+		set_post_thumbnail( $post_id, $attachment );
+
+		$said = (string) $this->rpc(
+			'tools/call',
+			array(
+				'name'      => 'publish_draft',
+				'arguments' => array( 'post_id' => $post_id ),
+			)
+		)['body']['result']['content'][0]['text'];
+
+		// Assert the path was reached before asserting what it said.
+		$this->assertStringContainsString( 'Published', $said, 'the publish did not go through: "' . $said . '"' );
+		$this->assertSame( 'publish', get_post_status( $post_id ) );
+
+		$this->assertStringNotContainsString(
+			'a featured image',
+			$said,
+			'publish_draft claimed a featured image that was already there: "' . $said . '"'
+		);
+	}
+
+	public function test_attach_featured_answers_about_what_it_did_not_what_exists() {
+		// Stated directly on the function, because two callers read it as
+		// "did you attach one" and the answer has to mean that.
+		Blogcraft_Settings::set( 'images_enabled', true );
+
+		$post_id    = self::factory()->post->create();
+		$attachment = self::factory()->attachment->create_object(
+			array(
+				'file'           => 'there.jpg',
+				'post_mime_type' => 'image/jpeg',
+			),
+			0,
+			array( 'post_status' => 'inherit' )
+		);
+		set_post_thumbnail( $post_id, $attachment );
+
+		$this->assertSame(
+			0,
+			Blogcraft_Images::attach_featured( $post_id, 'A title' ),
+			'attach_featured answered with the id of a picture it did not attach'
+		);
+
+		// And it left the existing one alone, which is the behaviour the
+		// early return is there for: a re-run must not be billed twice.
+		$this->assertSame( (int) $attachment, get_post_thumbnail_id( $post_id ) );
+	}
+
 	public function test_publishing_finishes_the_post_the_way_the_rest_of_the_plugin_does() {
 		// The gap this closes: a post published over MCP went out with no
 		// featured image, no search title, nothing linking to it and no
@@ -932,5 +1138,102 @@ class Test_Blogcraft_Mcp extends WP_UnitTestCase {
 
 		$this->assertStringContainsString( 'connected AI client', $html );
 		$this->assertStringNotContainsString( 'Tokens:', $html, 'it claims a token cost it did not have' );
+	}
+
+	// ------------------------------------------- what a connection may not do.
+
+	public function test_a_connection_cannot_administer_the_site() {
+		// The token here belongs to an administrator, which is the case that
+		// matters: the request becomes that user, so without a ceiling the
+		// connection would hold administrator capability and this plugin
+		// would be a way to administer a site from somewhere else.
+		//
+		// Listed one capability at a time, and by name, because this is the
+		// boundary the whole MCP feature rests on. A regression here is not a
+		// broken feature, it is a remote administration hole.
+		// Established before the request, because afterwards the ceiling is
+		// in place and the honest answer for this user is no -- which is the
+		// whole point, and what the loop below checks.
+		$this->assertTrue( user_can( $this->author, 'manage_options' ), 'the token owner really is an administrator' );
+
+		$this->rpc( 'tools/list' );
+
+		// And now it is not, for the rest of this request.
+		$this->assertFalse( user_can( $this->author, 'manage_options' ), 'the ceiling did not reach the token owner' );
+
+		foreach ( array(
+			'manage_options',
+			'install_plugins',
+			'activate_plugins',
+			'delete_plugins',
+			'update_plugins',
+			'install_themes',
+			'switch_themes',
+			'edit_themes',
+			'edit_plugins',
+			'edit_files',
+			'create_users',
+			'edit_users',
+			'delete_users',
+			'promote_users',
+			'remove_users',
+			'export',
+			'import',
+			'update_core',
+			'unfiltered_html',
+			'edit_dashboard',
+		) as $cap ) {
+			$this->assertFalse(
+				current_user_can( $cap ),
+				'an MCP request can ' . $cap
+			);
+		}
+	}
+
+	public function test_a_connection_can_still_do_its_own_work() {
+		$this->rpc( 'tools/list' );
+
+		foreach ( array( 'read', 'edit_posts', 'publish_posts', 'upload_files', Blogcraft_Capabilities::MANAGE ) as $cap ) {
+			$this->assertTrue( current_user_can( $cap ), 'an MCP request cannot ' . $cap );
+		}
+	}
+
+	public function test_the_ceiling_does_not_stop_a_draft_being_written() {
+		// The ceiling is worth nothing if it also breaks the tools. This is
+		// the same call as the create test above, asserted after the cap
+		// filter is in place.
+		$out = $this->rpc(
+			'tools/call',
+			array(
+				'name'      => 'create_draft',
+				'arguments' => array(
+					'title' => 'Written under the ceiling',
+					'html'  => '<p>Some words in a paragraph.</p>',
+				),
+			)
+		);
+
+		$this->assertFalse( $out['body']['result']['isError'], 'the capability ceiling broke create_draft' );
+
+		$posts = get_posts(
+			array(
+				'post_type'   => 'post',
+				'post_status' => 'draft',
+				'title'       => 'Written under the ceiling',
+			)
+		);
+
+		$this->assertCount( 1, $posts );
+	}
+
+	public function test_nothing_outside_the_allowlist_is_granted_by_name() {
+		// Guards against the allowlist quietly growing. Anything added to it
+		// has to be something a tool in this plugin actually needs.
+		$allowed = Blogcraft_Mcp_Auth::allowed_caps();
+
+		$this->assertNotContains( 'manage_options', $allowed );
+		$this->assertNotContains( 'unfiltered_html', $allowed );
+		$this->assertNotContains( 'edit_files', $allowed );
+		$this->assertLessThan( 16, count( $allowed ), 'the MCP capability allowlist is growing' );
 	}
 }

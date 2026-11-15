@@ -2132,13 +2132,7 @@ class Blogcraft_Generate {
 		// true it leaves the reader with nothing to look at and no way to tell
 		// working from stuck.
 		wp_safe_redirect(
-			add_query_arg(
-				array(
-					'page' => Blogcraft_Progress::PAGE_SLUG,
-					'job'  => (int) $job_id,
-				),
-				admin_url( 'admin.php' )
-			)
+			Blogcraft_Progress::url( (int) $job_id )
 		);
 		exit;
 	}

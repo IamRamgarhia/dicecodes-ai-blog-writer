@@ -185,16 +185,16 @@ class Test_Blogcraft_Cost_Labels extends WP_UnitTestCase {
 	public function test_the_keyless_and_free_key_picture_services_are_marked_free() {
 		$providers = Blogcraft_Images::providers();
 
-		foreach ( array( 'pollinations', 'pexels', 'pixabay' ) as $id ) {
+		foreach ( array( 'pollinations' ) as $id ) {
 			$this->assertArrayHasKey( $id, $providers );
 			$this->assertStringContainsString( 'free', strtolower( $providers[ $id ] ), $id );
 		}
 	}
 
 	public function test_every_generating_picture_service_is_marked_paid() {
-		// All four bill per image. Blogcraft never falls back to them — they
-		// run only when explicitly chosen — but somebody choosing one should
-		// see the cost in the same breath as the name.
+		// It bills per image. Blogcraft never falls back to it — it runs only
+		// when explicitly chosen — but somebody choosing it should see the cost
+		// in the same breath as the name.
 		foreach ( Blogcraft_Image_Models::providers() as $id => $label ) {
 			$this->assertStringContainsString( 'paid', strtolower( $label ), $id );
 		}

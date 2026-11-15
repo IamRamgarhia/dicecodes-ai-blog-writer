@@ -90,6 +90,44 @@ class Blogcraft_Admin {
 	 *
 	 * @return void
 	 */
+	/**
+	 * Give a hidden screen a page title, so core does not warn about it.
+	 *
+	 * A screen registered with no parent -- which is how you add a page that
+	 * works from a link or a bookmark without putting a permanent entry in the
+	 * menu -- is not in $menu or $submenu, so get_admin_page_title() finds
+	 * nothing for it and leaves the global $title as null. wp-admin/admin-
+	 * header.php then calls strip_tags( $title ), and on PHP 8.1 and later
+	 * passing null there is deprecated. The result was four PHP deprecations
+	 * in debug.log, one per hidden screen, in a core file but caused by us.
+	 *
+	 * load-{hook} runs before admin-header.php is included, so setting the
+	 * global there is in time; get_admin_page_title() leaves a title that is
+	 * already set alone.
+	 *
+	 * @param string $hook  Hook name add_submenu_page() returned.
+	 * @param string $title Title for the screen.
+	 * @return void
+	 */
+	public static function title_for( $hook, $title ) {
+		if ( ! $hook ) {
+			return;
+		}
+
+		add_action(
+			'load-' . $hook,
+			static function () use ( $title ) {
+				// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- this global is where wp-admin keeps the page title, and get_admin_page_title() is about to leave it null for a screen that has no menu entry. Setting it is the fix, not a side effect.
+				$GLOBALS['title'] = $title;
+			}
+		);
+	}
+
+	/**
+	 * Render the plugin's main screen.
+	 *
+	 * @return void
+	 */
 	public static function render_dashboard() {
 		Blogcraft_Overview::render();
 	}

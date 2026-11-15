@@ -33,3 +33,6 @@ docs/superpowers/
 # different version control system entirely. Committing it to git would
 # put each release in the history twice and grow with every one.
 svn/
+
+# Review correspondence with the Plugins Team: not code, and not public.
+plugins-team-reply-*.md

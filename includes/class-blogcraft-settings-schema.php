@@ -143,52 +143,12 @@ class Blogcraft_Settings_Schema {
 				'type'    => 'int',
 				'secret'  => false,
 			),
-			'fal_api_key'                     => array(
-				'default' => '',
-				'type'    => 'string',
-				'secret'  => true,
-			),
-			'fal_model'                       => array(
+			'image_model'                     => array(
 				'default' => '',
 				'type'    => 'string',
 				'secret'  => false,
 			),
-			'openai_image_key'                => array(
-				'default' => '',
-				'type'    => 'string',
-				'secret'  => true,
-			),
-			'openai_image_model'              => array(
-				'default' => '',
-				'type'    => 'string',
-				'secret'  => false,
-			),
-			'image_key_gemini'                => array(
-				'default' => '',
-				'type'    => 'string',
-				'secret'  => true,
-			),
-			'image_model_gemini'              => array(
-				'default' => '',
-				'type'    => 'string',
-				'secret'  => false,
-			),
-			'image_key_xai'                   => array(
-				'default' => '',
-				'type'    => 'string',
-				'secret'  => true,
-			),
-			'image_model_xai'                 => array(
-				'default' => '',
-				'type'    => 'string',
-				'secret'  => false,
-			),
-			'pexels_api_key'                  => array(
-				'default' => '',
-				'type'    => 'string',
-				'secret'  => true,
-			),
-			'pixabay_api_key'                 => array(
+			'image_api_key'                   => array(
 				'default' => '',
 				'type'    => 'string',
 				'secret'  => true,
