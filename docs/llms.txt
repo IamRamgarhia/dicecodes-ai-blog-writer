@@ -43,4 +43,4 @@ and sends nothing to its author.
 ## Elsewhere
 
 - [Plugin directory listing](https://wordpress.org/plugins/dicecodes-ai-blog-writer/): install it from here.
-- [Download](https://downloads.wordpress.org/plugin/dicecodes-ai-blog-writer.zip): the current release, version 1.3.3.
+- [Download](https://downloads.wordpress.org/plugin/dicecodes-ai-blog-writer.zip): the current release, version 1.4.0.
