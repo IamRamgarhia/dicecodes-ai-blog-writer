@@ -3,6 +3,10 @@
 The complete history. The most recent releases are also in readme.txt;
 everything is here, oldest at the bottom.
 
+= 1.4.1 =
+* Closes a hole in the 1.4.0 fix, found by the Plugins Team on 17 November 2026. Signing the link to the progress screen was the right idea, but the check only ran when the link named a job -- so a link that named none skipped it and carried on with whatever job was open, which costs the same money at the provider as naming one. What is being authorised is the act of writing, not the parameter, so a signature is now required every time: when no job is named it covers "carry on with whatever is open"
+* The plugin's own link to that screen is signed like any other, so nothing changes for anybody using it
+
 = 1.4.0 =
 
 Fixes everything raised in the Plugins Team review of 11 November 2026, and

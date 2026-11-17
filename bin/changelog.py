@@ -34,12 +34,27 @@ def read(path):
     return body, ('\r\n' if '\r\n' in body else '\n')
 
 
-def releases(body):
-    """Every release block in a changelog, newest first."""
-    at = body.find('= ')
-    parts = re.split(r'(?m)^(?== \d+\.\d+\.\d+ =$)', body[at:] if at >= 0 else body)
+RELEASE = r'= \d+\.\d+\.\d+ ='
 
-    return [p for p in parts if p.strip().startswith('= ')]
+
+def releases(body):
+    """Every release block in a changelog, newest first.
+
+    Split on the version headings themselves and keep only the parts that
+    begin with one. Anything ahead of the first release is dropped, because
+    it is not a release: changelog.txt opens with a '== Changelog ==' heading
+    and a paragraph explaining the split between the two files.
+
+    The first version of this looked for the earliest '= ' in the file and
+    split from there, then kept every part starting '= '. Both halves were
+    too loose. '== Changelog ==' contains '= ' one character in, so the
+    search landed inside the heading rather than at a release, and the
+    paragraph beneath it then passed the startswith() test and was copied
+    into readme.txt as though it were a release of its own.
+    """
+    parts = re.split(r'(?m)^(?=' + RELEASE + r'$)', body)
+
+    return [p for p in parts if re.match(RELEASE, p.strip())]
 
 
 def build():
@@ -95,4 +110,21 @@ def main():
     print('readme.txt carries %d releases, %d characters of %d' % (kept, used, CEILING))
 
 
-main()
+def self_test():
+    sample = (
+        '== Changelog ==\n\nProse that is not a release.\n\n'
+        '= 2.0.0 =\n* new\n\n= 1.9.0 =\n* old\n'
+    )
+    got = releases(sample)
+
+    assert 2 == len(got), got
+    assert got[0].startswith('= 2.0.0 ='), got[0]
+    assert got[1].startswith('= 1.9.0 ='), got[1]
+    assert 'Prose that is not a release' not in ''.join(got)
+    print('releases() drops the header and keeps both releases.')
+
+
+if '--self-test' in sys.argv:
+    self_test()
+else:
+    main()

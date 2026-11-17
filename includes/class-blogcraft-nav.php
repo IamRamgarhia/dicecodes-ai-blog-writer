@@ -114,7 +114,14 @@ class Blogcraft_Nav {
 
 			$item = sprintf(
 				'<a class="bc-nav-item" href="%1$s">%2$s%3$s</a>',
-				esc_url( admin_url( 'admin.php?page=' . $slug ) ),
+				esc_url(
+					// The progress screen drives the job it shows, so its link
+					// is signed like any other that does. Every other screen
+					// only displays things.
+					Blogcraft_Progress::PAGE_SLUG === $slug
+						? Blogcraft_Progress::url()
+						: admin_url( 'admin.php?page=' . $slug )
+				),
 				esc_html( $label ),
 				$bubble
 			);

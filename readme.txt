@@ -4,7 +4,7 @@ Tags: ai content generator, ai writer, autoblogging, seo content, blog automatio
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.4.0
+Stable tag: 1.4.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -181,26 +181,71 @@ They are encrypted before being stored, shown only as a mask, and never written 
 
 == Changelog ==
 
+= 1.4.1 =
+* Closes a hole in the 1.4.0 fix, found by the Plugins Team on 17 November 2026. Signing the link to the progress screen was the right idea, but the check only ran when the link named a job -- so a link that named none skipped it and carried on with whatever job was open, which costs the same money at the provider as naming one. What is being authorised is the act of writing, not the parameter, so a signature is now required every time: when no job is named it covers "carry on with whatever is open"
+* The plugin's own link to that screen is signed like any other, so nothing changes for anybody using it
+
 = 1.4.0 =
-* Fixes everything raised in the Plugins Team review of 11 November 2026
-* Security: links to the progress screen are signed, so a crafted link can no longer set an administrator's browser writing a post. Every MCP write now asks WordPress whether this user may edit this post, instead of checking one capability that was not post-specific. An MCP request is held to an explicit list of capabilities, so a connected client cannot administer the site even when an administrator owns the token. OAuth client registration is rate limited, and eviction drops never-used registrations first
-* Fixed: posts could stop with the bar frozen and no error. A stage that outran the host's time limit left the job locked and nothing released it, so the screen polled a job it could never claim. It now releases an abandoned lock itself rather than waiting on an hourly cron job a quiet site never fires
-* Pictures are now one question with two answers: the free service, or the same AI that writes the post. If you write with OpenAI, Gemini or Grok, the key you already pasted draws the pictures too
-* Removed fal.ai, Pexels and Pixabay. Between them they wanted three more accounts and three more keys. Ten image settings are now two, and existing sites are carried across on upgrade
-* Corrected the readme: Pollinations does publish terms and a privacy policy, and that policy covers by name the host this plugin calls
-* Two MCP tools claimed credit for pictures they had not added: a single featured image was reported to the connected client as "Added 9 pictures", because the function answering was returning an attachment id rather than saying what it had done, and publishing reported adding a featured image whether or not it had
-* Four screens each produced a PHP deprecation on PHP 8.1 and later: a screen registered without a menu entry has no title for core to find, which left core calling strip_tags() on null. The warning named a core file but the cause was ours
 
-= 1.3.3 =
-* A body sent by a connected app is narrowed before it becomes a post. The helper that turns HTML into blocks returns anything already carrying a block delimiter exactly as it arrived — right for markup this plugin wrote and reads back, wrong for markup that came from somewhere else, because a body merely beginning with one went into the post whole. The same helper was already being given narrowed input everywhere else it is used
-* This is not a way in that was otherwise shut: the account behind a connection token belongs to somebody who can already publish. It matters because of where the words come from. They are written by a language model, and this plugin hands that model pages it fetched off the open web — so trusting the connection is not the same as trusting the text arriving over it, and the page that renders it is every reader's
-* A test sends a script tag, an event attribute, a javascript: link and an iframe behind a block delimiter, and requires all four to be gone and the writing around them to survive
+Fixes everything raised in the Plugins Team review of 11 November 2026, and
+makes pictures a great deal simpler to set up.
 
-= 1.3.2 =
-* Addresses the plugin did not choose are now fetched the careful way. Two were not: the research list typed into a settings field, and the results a search service hands back, which nobody on this site picked at all. Both went through the call that follows whatever it is handed — including to this server's own network, or to a cloud provider's metadata address. The voice reader had used the careful call for the same kind of input all along
-* A page fetched from outside is now read only up to two megabytes. All that is wanted from one is its headings and an excerpt, both of which arrive early, and without a cap a page answering with a gigabyte is read into memory in full — and the request that dies of it is somebody's post
-* The provider call deliberately keeps the plain fetch, because Ollama, LM Studio, Jan and llama.cpp all answer on localhost and the careful call refuses loopback. A test records that reason alongside the three other exemptions, so the next person to tidy this does not quietly break every local model
-* The translation catalogue still announced itself as "Blogcraft" and declared the old text domain. The rename updated the filename and the scanner but not the header inside it, which is the part a translation tool actually reads. Both now come from the same constant as everything else
+Security, from the review:
 
+* A crafted link could set an administrator's browser writing a post. The
+  progress screen advances a job while it is open, and the job id came out of
+  the address unverified; the AJAX nonce behind the advance could not stop it,
+  because that nonce is minted by the very page the link opened. Job links are
+  now signed. An unsigned one still shows the job -- old bookmarks keep working
+  -- it just does not set it running.
+* Every MCP write now asks WordPress whether this user may edit this post,
+  rather than checking one capability that is not post-specific. A token could
+  previously edit a post another user had created, published ones included.
+  Publishing a draft is now a separate check again, so a contributor's token
+  stops where a contributor stops.
+* OAuth client registration is rate limited per caller. It has to stay
+  unauthenticated -- that is what dynamic registration is -- but it did not have
+  to be unlimited: registrations could be posted until the cap evicted every
+  client anyone had actually connected, and none of them could authorise again.
+  Eviction now drops never-used registrations first.
+
+Fixed:
+
+* Posts could stop with the bar frozen and no error. A stage that outran the
+  host's time limit was killed after the job was marked running, and nothing
+  set it back, so every poll asked for a job that could no longer be claimed --
+  for ever. The screen now releases an abandoned lock itself, instead of waiting
+  on an hourly cron job that a quiet site or DISABLE_WP_CRON never fires. Each
+  stage also gets its own execution-time allowance.
+
+Changed:
+
+* Pictures are now one question with two answers: the free service, or the same
+  AI that writes the post. If you write with OpenAI, Gemini or Grok, the key you
+  already pasted draws the pictures -- one key, one bill, nothing else to set up.
+* Removed fal.ai, Pexels and Pixabay. Between them they wanted three more
+  accounts and three more keys, and the stock libraries returned photographs
+  thousands of other sites had already used. Ten image settings are now two.
+* Existing sites are carried over on upgrade. If you drew with OpenAI, Gemini or
+  Grok and wrote with the same company, your model id moves across untouched. Any
+  other picture setting becomes the free service rather than quietly drawing on
+  the wrong account, and the keys that no longer have anywhere to go are deleted
+  rather than left in the database.
+* Corrected the readme: Pollinations does publish terms and a privacy policy,
+  and that policy covers by name the host this plugin calls.
+* Two MCP tools claimed credit for pictures they had not added. attach_featured()
+  answered with an attachment id, and it answered with one in two different
+  situations -- it had just attached a picture, or the post already had one and
+  it left it alone. add_pictures added that id to a running total, so a single
+  featured image that happened to be attachment 9 was reported to the connected
+  client as "Added 9 pictures"; on a site with a fuller media library the number
+  would have been larger still. publish_draft read the same answer as "yes" and
+  reported "Added: a featured image" on every publish, whether or not it had
+  added one. The function now answers about what it did, and says nothing when
+  the post already had a picture.
+* Four screens produced a PHP deprecation each on PHP 8.1 and later. A screen
+  registered without a menu entry is not in the menu arrays, so core finds no
+  title for it and then calls strip_tags() on null. The warning named a core
+  file but the cause was ours. They name their own titles now.
 Older releases are listed in changelog.txt, which ships with the plugin.
 

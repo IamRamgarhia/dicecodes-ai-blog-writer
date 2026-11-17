@@ -131,40 +131,50 @@ class Blogcraft_Progress {
 			true
 		);
 
-		wp_localize_script(
-			'blogcraft-progress',
-			'blogcraftProgress',
-			array(
-				'ajaxUrl'   => admin_url( 'admin-ajax.php' ),
-				'nonce'     => wp_create_nonce( self::ACTION ),
-				'job'       => self::current_job_id(),
-				// The clock used to count from when the page loaded, so
-				// refreshing a job that had been running four minutes said
-				// it had been running none. Both of these are measured from
-				// the job itself, so a reload picks up where it was.
-				'elapsedAt' => self::elapsed_for( self::current_job_id() ),
-				'stepsAt'   => self::steps_done_for( self::current_job_id() ),
-				'working'   => __( 'Working...', 'dicecodes-ai-blog-writer' ),
-				// Whether there is anything left to watch. Without this the
-				// page opened on a job finished days ago, wrote "Working"
-				// under it, and only stopped saying so after the first poll
-				// came back — if it came back at all.
-				'settled'   => self::is_settled( self::current_job_id() ),
-				// False when the job was named by an unsigned link. The screen
-				// then reads the job without starting it. See may_drive().
-				'autostart' => self::may_drive(),
-				'done'      => __( 'Finished.', 'dicecodes-ai-blog-writer' ),
-				'idle'      => __( 'Open this job from the Activity screen to continue it.', 'dicecodes-ai-blog-writer' ),
-				'stuck'     => __( 'Waiting. This post may be running in another tab, or may have stopped — the Activity screen has the details.', 'dicecodes-ai-blog-writer' ),
-				'failed'    => __( 'Something went wrong. The Activity screen has the details.', 'dicecodes-ai-blog-writer' ),
-				'total'     => count( self::steps() ),
-				/* translators: 1: step number reached. 2: steps in total. */
-				'stepOf'    => __( 'Step %1$d of %2$d', 'dicecodes-ai-blog-writer' ),
-				/* translators: %s: a duration such as "40s" or "2m 10s". */
-				'elapsed'   => __( '%s elapsed', 'dicecodes-ai-blog-writer' ),
-				/* translators: %s: a duration such as "40s" or "2m 10s". */
-				'remaining' => __( 'about %s left', 'dicecodes-ai-blog-writer' ),
-			)
+		wp_localize_script( 'blogcraft-progress', 'blogcraftProgress', self::script_config() );
+	}
+
+	/**
+	 * Everything the progress script is told.
+	 *
+	 * Lifted out of the enqueue so the decisions in it can be tested. The
+	 * one that matters is `autostart`: whether this request is allowed to
+	 * set a job running, which is a question about the address and so a
+	 * question somebody can craft an answer to.
+	 *
+	 * @return array
+	 */
+	public static function script_config() {
+		return array(
+			'ajaxUrl'   => admin_url( 'admin-ajax.php' ),
+			'nonce'     => wp_create_nonce( self::ACTION ),
+			'job'       => self::current_job_id(),
+			// The clock used to count from when the page loaded, so
+			// refreshing a job that had been running four minutes said
+			// it had been running none. Both of these are measured from
+			// the job itself, so a reload picks up where it was.
+			'elapsedAt' => self::elapsed_for( self::current_job_id() ),
+			'stepsAt'   => self::steps_done_for( self::current_job_id() ),
+			'working'   => __( 'Working...', 'dicecodes-ai-blog-writer' ),
+			// Whether there is anything left to watch. Without this the
+			// page opened on a job finished days ago, wrote "Working"
+			// under it, and only stopped saying so after the first poll
+			// came back — if it came back at all.
+			'settled'   => self::is_settled( self::current_job_id() ),
+			// False when the job was named by an unsigned link. The screen
+			// then reads the job without starting it. See may_drive().
+			'autostart' => self::may_drive(),
+			'done'      => __( 'Finished.', 'dicecodes-ai-blog-writer' ),
+			'idle'      => __( 'Open this job from the Activity screen to continue it.', 'dicecodes-ai-blog-writer' ),
+			'stuck'     => __( 'Waiting. This post may be running in another tab, or may have stopped — the Activity screen has the details.', 'dicecodes-ai-blog-writer' ),
+			'failed'    => __( 'Something went wrong. The Activity screen has the details.', 'dicecodes-ai-blog-writer' ),
+			'total'     => count( self::steps() ),
+			/* translators: 1: step number reached. 2: steps in total. */
+			'stepOf'    => __( 'Step %1$d of %2$d', 'dicecodes-ai-blog-writer' ),
+			/* translators: %s: a duration such as "40s" or "2m 10s". */
+			'elapsed'   => __( '%s elapsed', 'dicecodes-ai-blog-writer' ),
+			/* translators: %s: a duration such as "40s" or "2m 10s". */
+			'remaining' => __( 'about %s left', 'dicecodes-ai-blog-writer' ),
 		);
 	}
 
@@ -247,15 +257,23 @@ class Blogcraft_Progress {
 	 * @param int $job_id Job.
 	 * @return string
 	 */
-	public static function url( $job_id ) {
-		return add_query_arg(
-			array(
-				'page'            => self::PAGE_SLUG,
-				'job'             => (int) $job_id,
-				'_blogcraft_open' => wp_create_nonce( self::OPEN_ACTION . '_' . (int) $job_id ),
-			),
-			admin_url( 'admin.php' )
+	public static function url( $job_id = 0 ) {
+		$job_id = (int) $job_id;
+
+		$args = array(
+			'page'            => self::PAGE_SLUG,
+			'_blogcraft_open' => wp_create_nonce( self::OPEN_ACTION . '_' . $job_id ),
 		);
+
+		// Zero is the navigation's case: "open the screen and carry on with
+		// whatever is running", with no particular job in mind. It still
+		// carries a signature, because the screen will not drive anything
+		// without one.
+		if ( $job_id > 0 ) {
+			$args['job'] = $job_id;
+		}
+
+		return add_query_arg( $args, admin_url( 'admin.php' ) );
 	}
 
 	/**
@@ -276,16 +294,29 @@ class Blogcraft_Progress {
 	 * @return bool
 	 */
 	private static function may_drive() {
+		// A signature is required every time, including when no job is named.
+		//
+		// The first version of this returned true when the `job` parameter was
+		// absent, reasoning that the id must then have come from
+		// newest_open_job() rather than from a link. That was wrong, and the
+		// Plugins Team caught it: a crafted link does not have to carry the
+		// parameter. Sending somebody plain admin.php?page=blogcraft-progress
+		// skipped the check entirely and set the newest open job running,
+		// which is the same attack the signature exists to stop and costs the
+		// same money at the provider.
+		//
+		// The lesson is that it is the action being authorised, not the
+		// parameter. So the nonce is always required; when no job is named it
+		// simply covers "drive whatever is open" instead of a particular id.
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- this IS the verification.
-		if ( ! isset( $_GET['job'] ) ) {
-			// Nothing was asked for, so the id came from newest_open_job():
-			// this plugin chose it, not a link.
-			return true;
+		$given = isset( $_GET['_blogcraft_open'] ) ? sanitize_text_field( wp_unslash( $_GET['_blogcraft_open'] ) ) : '';
+
+		if ( '' === $given ) {
+			return false;
 		}
 
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- verified on the next line.
-		$given = isset( $_GET['_blogcraft_open'] ) ? sanitize_text_field( wp_unslash( $_GET['_blogcraft_open'] ) ) : '';
-		$job   = isset( $_GET['job'] ) ? (int) $_GET['job'] : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- as above.
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- as above.
+		$job = isset( $_GET['job'] ) ? (int) $_GET['job'] : 0;
 
 		return (bool) wp_verify_nonce( $given, self::OPEN_ACTION . '_' . $job );
 	}

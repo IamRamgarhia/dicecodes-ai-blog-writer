@@ -345,4 +345,112 @@ class Test_Blogcraft_Progress extends WP_UnitTestCase {
 
 		$this->fail( 'job ' . $job_id . ' never settled after ' . $cap . ' turns' );
 	}
+
+	// --------------------------------------- who may set a job running.
+
+	/**
+	 * Ask the screen whether this request may drive a job.
+	 *
+	 * may_drive() is private because nothing outside this class has business
+	 * asking, so the question is put the way the screen itself puts it: the
+	 * value it hands to the script.
+	 *
+	 * @param array $query What the address carries.
+	 * @return bool Whether the screen would drive the job.
+	 */
+	private function would_drive( array $query ) {
+		$_GET = $query;
+
+		$config = Blogcraft_Progress::script_config();
+
+		$_GET = array();
+
+		return ! empty( $config['autostart'] );
+	}
+
+	/**
+	 * A link with no job at all must not set the newest one running.
+	 *
+	 * This is the bypass the Plugins Team found on 17 November. The first
+	 * version of the signature check returned early when the job parameter
+	 * was absent, on the reasoning that the id must then have come from
+	 * newest_open_job() rather than from a link. A crafted link does not have
+	 * to carry the parameter: leaving it out skipped the check entirely and
+	 * resumed whatever job was open, which costs real money at the provider.
+	 */
+	public function test_a_link_with_no_job_cannot_set_the_newest_one_running() {
+		$this->assertFalse( $this->would_drive( array( 'page' => Blogcraft_Progress::PAGE_SLUG ) ) );
+	}
+
+	/**
+	 * Nor may one that names a job without signing for it.
+	 */
+	public function test_a_link_naming_a_job_without_a_signature_cannot_drive_it() {
+		$this->assertFalse(
+			$this->would_drive(
+				array(
+					'page' => Blogcraft_Progress::PAGE_SLUG,
+					'job'  => 1,
+				)
+			)
+		);
+	}
+
+	/**
+	 * Nor one carrying somebody else's signature.
+	 */
+	public function test_a_signature_for_another_job_does_not_transfer() {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+
+		$this->assertFalse(
+			$this->would_drive(
+				array(
+					'page'            => Blogcraft_Progress::PAGE_SLUG,
+					'job'             => 2,
+					'_blogcraft_open' => wp_create_nonce( Blogcraft_Progress::OPEN_ACTION . '_1' ),
+				)
+			)
+		);
+	}
+
+	/**
+	 * The plugin's own links do drive, including the one with no job.
+	 *
+	 * The navigation links to the screen without naming a job -- "carry on
+	 * with whatever is running" -- so that link is signed too. Without this
+	 * the fix above would have made the menu entry useless.
+	 */
+	public function test_the_plugins_own_links_still_drive() {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+
+		foreach ( array( 0, 7 ) as $job_id ) {
+			$url = Blogcraft_Progress::url( $job_id );
+			$query = array();
+			parse_str( (string) wp_parse_url( $url, PHP_URL_QUERY ), $query );
+
+			$this->assertTrue(
+				$this->would_drive( $query ),
+				"the plugin own link for job " . $job_id . " does not drive it"
+			);
+		}
+	}
+
+	/**
+	 * An unsigned link still shows the job; it simply does not run it.
+	 *
+	 * Reading is harmless, and an old bookmark should not break.
+	 */
+	public function test_an_unsigned_link_still_shows_the_job() {
+		$_GET = array(
+			'page' => Blogcraft_Progress::PAGE_SLUG,
+			'job'  => 11,
+		);
+
+		$config = Blogcraft_Progress::script_config();
+
+		$_GET = array();
+
+		$this->assertSame( 11, (int) $config['job'] );
+		$this->assertEmpty( $config['autostart'] );
+	}
 }
